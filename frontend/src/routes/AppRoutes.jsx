@@ -16,7 +16,7 @@ import AuditLogPage from '../pages/dashboards/AuditLogPage';
 import UsersRolesPage from '../pages/dashboards/UsersRolesPage';
 import DashboardLayout from '../layouts/DashboardLayout';
 import RegistrationDashboardPage from '../pages/registration/RegistrationDashboardPage';
-import PatientsPage from '../pages/registration/PatientsPage';
+import RegisterPatientPage from '../pages/registration/RegisterPatientPage';
 import VisitsPage from '../pages/registration/VisitsPage';
 import EmergencyPage from '../pages/registration/EmergencyPage';
 import InsuranceCardsPage from '../pages/registration/InsuranceCardsPage';
@@ -50,14 +50,16 @@ const ADMIN_MENU_ITEMS = [
   { key: 'audit-log', label: 'Audit Log', icon: <AuditOutlined />, path: '/admin/audit-log', breadcrumb: ['Administration', 'Audit Log'] },
 ];
 
-// Insurance Cards sits right after Emergency — Registration Staff now owns
-// card custody end-to-end (Phase 6), not Cashier/Billing.
+// Dashboard listed first, but Queue stays the post-login landing page (see
+// the "/registration" redirect below) — Queue is still where Registration
+// Staff spend most of their time, this only changes the sidebar's visual
+// order, not which page you land on.
 const REGISTRATION_MENU_ITEMS = [
   { key: 'dashboard', label: 'Dashboard', icon: <DashboardOutlined />, path: '/registration/dashboard', breadcrumb: ['Registration', 'Dashboard'] },
-  { key: 'patients', label: 'Patients', icon: <TeamOutlined />, path: '/registration/patients', breadcrumb: ['Registration', 'Patients'] },
+  { key: 'queue', label: 'Queue', icon: <UnorderedListOutlined />, path: '/registration/queue', breadcrumb: ['Registration', 'Queue'] },
+  { key: 'register-patient', label: 'Register Patient', icon: <TeamOutlined />, path: '/registration/register-patient', breadcrumb: ['Registration', 'Register Patient'] },
   { key: 'emergency', label: 'Emergency', icon: <AlertOutlined />, path: '/registration/emergency', breadcrumb: ['Registration', 'Emergency'] },
   { key: 'insurance-cards', label: 'Insurance Cards', icon: <SafetyCertificateOutlined />, path: '/registration/insurance-cards', breadcrumb: ['Registration', 'Insurance Cards'] },
-  { key: 'queue', label: 'Queue', icon: <UnorderedListOutlined />, path: '/registration/queue', breadcrumb: ['Registration', 'Queue'] },
   { key: 'notifications', label: 'Notification', icon: <BellOutlined />, path: '/registration/notifications', breadcrumb: ['Registration', 'Notification'] },
 ];
 
@@ -126,10 +128,12 @@ export default function AppRoutes() {
       </Route>
 
       <Route element={<ProtectedRoute allowedRole="Registration Staff" />}>
-        <Route path="/registration" element={<Navigate to="/registration/dashboard" replace />} />
+        {/* Queue, not Dashboard, is where the actual shift starts — see
+            REGISTRATION_MENU_ITEMS above. */}
+        <Route path="/registration" element={<Navigate to="/registration/queue" replace />} />
         <Route element={<DashboardLayout menuItems={REGISTRATION_MENU_ITEMS} />}>
           <Route path="/registration/dashboard" element={<RegistrationDashboardPage />} />
-          <Route path="/registration/patients" element={<PatientsPage />} />
+          <Route path="/registration/register-patient" element={<RegisterPatientPage />} />
           <Route path="/registration/visits" element={<VisitsPage />} />
           <Route path="/registration/emergency" element={<EmergencyPage />} />
           <Route path="/registration/insurance-cards" element={<InsuranceCardsPage />} />

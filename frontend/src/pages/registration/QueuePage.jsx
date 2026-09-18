@@ -11,7 +11,6 @@ import useAnnouncementPlayer from '../../hooks/useAnnouncementPlayer';
 import { ConnectedBadge } from '../../components/ConnectionIndicator';
 import { formatStatusLabel } from '../../utils/formatLabel';
 import { canActOnDepartment } from '../../utils/departmentRoles';
-import TicketViewModal from '../../components/TicketViewModal';
 
 const STATUS_COLORS = {
   WAITING: 'gold',
@@ -24,13 +23,6 @@ const STATUS_COLORS = {
   TRANSFERRED: 'purple',
 };
 
-const ACTION_LABELS = {
-  call: 'called',
-  'start-service': 'moved to in-service',
-  'no-show': 'marked as no-show',
-  cancel: 'cancelled',
-};
-
 export default function QueuePage() {
   const activeRole = useSelector((state) => state.auth.user?.active_role);
   const location = useLocation();
@@ -41,10 +33,9 @@ export default function QueuePage() {
   // q may arrive pre-filled via navigate(..., { state: { q } }) — e.g. the
   // Patients page's "View Visits" modal jumping straight to a specific
   // in-progress ticket instead of making staff retype/search for it.
-  const [filters, setFilters] = useState({ q: location.state?.q || '', department_id: undefined, status: undefined, priority_level_id: undefined });
+  const [filters, setFilters] = useState({ q: location.state?.q || '', priority_level_id: undefined });
   const [actingId, setActingId] = useState(null);
   const [callingNext, setCallingNext] = useState(false);
-  const [viewingTicket, setViewingTicket] = useState(null);
   const { audioEnabled, enableAudio, playAnnouncement } = useAnnouncementPlayer();
 
   const loadTickets = (params = filters) => {
@@ -104,15 +95,20 @@ export default function QueuePage() {
     loadTickets(next);
   };
 
+  // Registration Staff only ever act on REG department tickets
+  // (DepartmentRoles maps them to REG exclusively — see canAct below), so
+  // this toolbar button always targets REG, not a picked department.
   const callNextPatient = async () => {
+    const regDepartment = departments.find((d) => d.dept_code === 'REG');
+    if (!regDepartment) return;
     setCallingNext(true);
     try {
-      const { data } = await apiClient.post(`/departments/${filters.department_id}/call-next`);
+      const { data } = await apiClient.post(`/departments/${regDepartment.id}/call-next`);
       if (data.ticket) {
         message.success(`Called ${data.ticket.queue_number} (${data.ticket.service?.visit?.patient?.name || 'patient'}).`);
         playAnnouncement(data.ticket.id);
       } else {
-        message.info(data.message || 'No patients waiting in this department.');
+        message.info(data.message || 'No patients waiting.');
       }
       loadTickets();
     } catch (error) {
@@ -122,15 +118,31 @@ export default function QueuePage() {
     }
   };
 
-  const runAction = async (ticket, action) => {
+  // Row "Call" buttons don't call THIS ticket — they trigger the same
+  // priority-based PriorityEngine::callNext() as the (now-removed)
+  // standalone "Call Next Patient" button did, scoped to this row's
+  // department. Whichever WAITING/ON_HOLD row's button is clicked, the
+  // backend still picks the actual highest-priority ticket — clicking a
+  // specific row is a trigger, not a way to skip the priority order (see
+  // DepartmentController::callNext). This deliberately differs from the
+  // per-ticket PATCH /queue-tickets/{id}/call used by Doctor/Laboratory/
+  // Pharmacy's row buttons, which calls that exact ticket with no
+  // priority check at all.
+  const callNextInDepartment = async (ticket) => {
+    const departmentId = ticket.service?.department?.id;
+    if (!departmentId) return;
     setActingId(ticket.id);
     try {
-      await apiClient.patch(`/queue-tickets/${ticket.id}/${action}`);
-      message.success(`Ticket ${ticket.queue_number} ${ACTION_LABELS[action] || 'updated'}.`);
-      if (action === 'call') playAnnouncement(ticket.id);
+      const { data } = await apiClient.post(`/departments/${departmentId}/call-next`);
+      if (data.ticket) {
+        message.success(`Called ${data.ticket.queue_number} (${data.ticket.service?.visit?.patient?.name || 'patient'}).`);
+        playAnnouncement(data.ticket.id);
+      } else {
+        message.info(data.message || 'No patients waiting in this department.');
+      }
       loadTickets();
     } catch (error) {
-      message.error(error.response?.data?.message || 'Could not update ticket.');
+      message.error(error.response?.data?.message || 'Could not call the next patient.');
     } finally {
       setActingId(null);
     }
@@ -153,7 +165,6 @@ export default function QueuePage() {
       title: 'Action',
       render: (_, ticket) => {
         const busy = actingId === ticket.id;
-        const isTerminal = ['COMPLETED', 'CANCELLED', 'NO_SHOW', 'TRANSFERRED'].includes(ticket.status);
         // This view spans every department (unlike each clinical role's own
         // queue page, which is scoped to one), so unlike those pages a
         // button here can't be assumed permitted just by which route you're
@@ -167,29 +178,20 @@ export default function QueuePage() {
             </Tooltip>
           );
         }
-        // Only ever REG tickets reach this branch — DepartmentRoles maps
-        // Registration Staff to REG exclusively, so canAct is never true
-        // for any other department here. "Register Patient" (not the
-        // generic "View" DepartmentQueuePage uses for other roles) names
-        // what this actually does: record the patient's details and which
-        // department they need, then forward them there.
-        return (
-          <Space wrap>
-            {['WAITING', 'ON_HOLD'].includes(ticket.status) && (
-              <Button size="small" loading={busy} onClick={() => runAction(ticket, 'call')}>Call</Button>
-            )}
-            {ticket.status === 'CALLED' && (
-              <Button size="small" loading={busy} onClick={() => runAction(ticket, 'start-service')}>Start Service</Button>
-            )}
-            <Button size="small" type="primary" onClick={() => setViewingTicket(ticket)}>Register Patient</Button>
-            {ticket.status === 'CALLED' && (
-              <Button size="small" loading={busy} onClick={() => runAction(ticket, 'no-show')}>Mark No-Show</Button>
-            )}
-            {!isTerminal && (
-              <Button size="small" danger loading={busy} onClick={() => runAction(ticket, 'cancel')}>Cancel</Button>
-            )}
-          </Space>
-        );
+        // Call is the only clickable action left on this page — once
+        // CALLED, Register lives exclusively on the "Register Patient"
+        // page (RegisterPatientPage.jsx), not here. The button still
+        // relabels to "Called" (disabled) so the row visibly reflects
+        // that it's been called, instead of just going blank.
+        if (['WAITING', 'ON_HOLD'].includes(ticket.status)) {
+          return (
+            <Button size="small" loading={busy} onClick={() => callNextInDepartment(ticket)}>Call</Button>
+          );
+        }
+        if (ticket.status === 'CALLED') {
+          return <Button size="small" disabled>Called</Button>;
+        }
+        return <span style={{ color: '#8c8c8c' }}>—</span>;
       },
     },
   ];
@@ -206,51 +208,26 @@ export default function QueuePage() {
           onSearch={(value) => updateFilter({ q: value })}
         />
         <Select
-          placeholder="Department"
-          allowClear
-          style={{ width: 180 }}
-          options={departments.map((d) => ({ label: d.dept_name, value: d.id }))}
-          onChange={(value) => updateFilter({ department_id: value })}
-        />
-        <Select
-          placeholder="Status"
-          allowClear
-          style={{ width: 150 }}
-          options={Object.keys(STATUS_COLORS).map((s) => ({ label: formatStatusLabel(s), value: s }))}
-          onChange={(value) => updateFilter({ status: value })}
-        />
-        <Select
           placeholder="Priority"
           allowClear
           style={{ width: 150 }}
           options={priorityLevels.map((p) => ({ label: p.name, value: p.id }))}
           onChange={(value) => updateFilter({ priority_level_id: value })}
         />
-        <Tooltip title={filters.department_id ? '' : 'Pick a department above first'}>
-          <Button
-            type="primary"
-            icon={<ThunderboltOutlined />}
-            disabled={!filters.department_id}
-            loading={callingNext}
-            onClick={callNextPatient}
-          >
-            Call Next Patient
-          </Button>
-        </Tooltip>
+        <Button
+          type="primary"
+          icon={<ThunderboltOutlined />}
+          loading={callingNext}
+          onClick={callNextPatient}
+        >
+          Call Next Patient
+        </Button>
         {!audioEnabled && (
           <Button icon={<SoundOutlined />} onClick={enableAudio}>Enable Sound</Button>
         )}
         <ConnectedBadge state={connectionState} />
       </Space>
       <Table rowKey="id" columns={columns} dataSource={tickets} loading={loading} />
-
-      <TicketViewModal
-        ticket={viewingTicket}
-        open={!!viewingTicket}
-        onClose={() => setViewingTicket(null)}
-        onChanged={loadTickets}
-        onTicketCalled={playAnnouncement}
-      />
     </div>
   );
 }

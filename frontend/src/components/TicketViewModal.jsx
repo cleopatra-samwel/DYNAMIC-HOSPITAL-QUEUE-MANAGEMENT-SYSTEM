@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Checkbox, DatePicker, Descriptions, Divider, Form, Input, Modal, Radio, Select, Spin, Typography, message } from 'antd';
+import { Alert, Button, Card, Checkbox, DatePicker, Descriptions, Divider, Form, Input, Modal, Radio, Select, Spin, Typography, message } from 'antd';
 import dayjs from 'dayjs';
 import apiClient from '../services/apiClient';
 import { formatStatusLabel } from '../utils/formatLabel';
@@ -272,7 +272,11 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
   } else if (isCalled) {
     footer.push(<Button key="start" type="primary" loading={quickActing} onClick={() => runQuickAction('start-service')}>Start Service</Button>);
   } else if (isInService) {
-    footer.push(<Button key="submit" type="primary" loading={submitting} onClick={submitByDept[deptCode]}>Submit &amp; Forward</Button>);
+    // REG's form always ends in a forward (Required Department is
+    // mandatory), so "Forward" says exactly what it does — Doctor/
+    // Laboratory/Pharmacy keep "Submit & Forward" since their own referral
+    // options include a genuine "complete, no further service" case.
+    footer.push(<Button key="submit" type="primary" loading={submitting} onClick={submitByDept[deptCode]}>{deptCode === 'REG' ? 'Forward' : 'Submit & Forward'}</Button>);
   }
 
   const summary = (
@@ -280,9 +284,16 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
       <Descriptions.Item label="Patient">{patient?.name || '—'}</Descriptions.Item>
       <Descriptions.Item label="Ticket">{ticket?.queue_number}</Descriptions.Item>
       <Descriptions.Item label="Department">{ticket?.service?.department?.dept_name}</Descriptions.Item>
-      <Descriptions.Item label="Priority">{ticket?.priority_level?.name || '—'}</Descriptions.Item>
+      {/* Not shown for REG — this is still just the self-check-in default
+          ("Normal"), not a real priority yet. The Patient Category field
+          below is what staff actually set it from. */}
+      {deptCode !== 'REG' && <Descriptions.Item label="Priority">{ticket?.priority_level?.name || '—'}</Descriptions.Item>}
       <Descriptions.Item label="Status">{formatStatusLabel(ticket?.status)}</Descriptions.Item>
-      <Descriptions.Item label="Payment Status">{ticket?.service?.visit?.payment_status || 'Pending'}</Descriptions.Item>
+      {/* Not shown for REG — payment is always still "Pending" at this
+          stage (Registration itself never requires payment; verification
+          happens once the patient reaches a department PaymentGate
+          actually gates, e.g. Consultation/Laboratory/Pharmacy). */}
+      {deptCode !== 'REG' && <Descriptions.Item label="Payment Status">{ticket?.service?.visit?.payment_status || 'Pending'}</Descriptions.Item>}
     </Descriptions>
   );
 
@@ -300,59 +311,73 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
           {summary}
 
           <Form form={form} layout="vertical">
-            <Descriptions column={1} size="small" bordered style={{ marginBottom: 16 }}>
-              <Descriptions.Item label="Chief Complaint (Registration)">
-                {record.chief_complaint || <Text type="secondary">Not recorded</Text>}
-              </Descriptions.Item>
-            </Descriptions>
+            {/* Not shown for REG — it's the same chief_complaint the
+                editable "Chief Complaint (optional)" field below already
+                covers, so showing it twice here would be redundant.
+                Doctor/Laboratory/Pharmacy still see it as read-only
+                reference for why the patient came in. */}
+            {deptCode !== 'REG' && (
+              <Descriptions column={1} size="small" bordered style={{ marginBottom: 16 }}>
+                <Descriptions.Item label="Chief Complaint (Registration)">
+                  {record.chief_complaint || <Text type="secondary">Not recorded</Text>}
+                </Descriptions.Item>
+              </Descriptions>
+            )}
 
             {deptCode === 'REG' && (
               isInService ? (
                 <>
-                  <Divider orientation="left" plain>Patient Details</Divider>
-                  <Form.Item label="Full Name" name="name" rules={[{ required: true, message: 'Full name is required' }]}>
-                    <Input />
-                  </Form.Item>
-                  <Form.Item label="Date of Birth" name="date_of_birth" rules={[{ required: true, message: 'Date of birth is required' }]}>
-                    <DatePicker style={{ width: '100%' }} disabledDate={(current) => current && current > dayjs().endOf('day')} format="YYYY-MM-DD" />
-                  </Form.Item>
-                  <Form.Item label="Gender" name="gender" rules={[{ required: true, message: 'Gender is required' }]}>
-                    <Select options={[{ label: 'Male', value: 'Male' }, { label: 'Female', value: 'Female' }, { label: 'Other', value: 'Other' }]} />
-                  </Form.Item>
-                  <Form.Item label="Contact" name="contact" rules={[{ required: true, message: 'Contact is required' }]}>
-                    <Input />
-                  </Form.Item>
-                  <Form.Item label="Chief Complaint (optional)" name="chief_complaint">
-                    <TextArea rows={2} placeholder="Brief reason for the visit, if the patient mentions one" />
-                  </Form.Item>
-                  <Form.Item label="Patient Category" name="patient_type" rules={[{ required: true }]}>
-                    <Select options={[{ label: 'Normal', value: 'Normal' }, { label: 'Emergency', value: 'Emergency' }]} />
-                  </Form.Item>
-                  <Form.Item label="Required Department" name="department_id" rules={[{ required: true, message: 'Department is required' }]}>
-                    <Select options={departments.filter((d) => d.dept_code !== 'REG').map((d) => ({ label: d.dept_name, value: d.id }))} />
-                  </Form.Item>
-                  <Form.Item noStyle shouldUpdate={(prev, cur) => prev.department_id !== cur.department_id}>
-                    {() => (departmentsByCode.CONS && form.getFieldValue('department_id') === departmentsByCode.CONS.id ? (
-                      <Form.Item label="Preferred Doctor" name="doctor_id">
-                        <Select allowClear placeholder="No preference — any available doctor" options={doctors.map((d) => ({ label: d.name, value: d.id }))} />
-                      </Form.Item>
-                    ) : null)}
-                  </Form.Item>
-                  <Form.Item label="Payment Method" name="payment_method" rules={[{ required: true }]}>
-                    <Select options={[{ label: 'Cash', value: 'Cash' }, { label: 'Insurance', value: 'Insurance' }]} />
-                  </Form.Item>
-                  <Form.Item noStyle shouldUpdate={(prev, cur) => prev.payment_method !== cur.payment_method}>
-                    {() => form.getFieldValue('payment_method') === 'Insurance' && (
-                      <>
-                        <Form.Item label="Insurance Provider" name="insurance_provider" rules={[{ required: true, message: 'Insurance provider is required' }]}>
-                          <Input />
+                  <Card title="Patient Details" size="small" style={{ marginBottom: 16 }}>
+                    <Form.Item label="Full Name" name="name" rules={[{ required: true, message: 'Full name is required' }]} style={{ marginBottom: 10 }}>
+                      <Input />
+                    </Form.Item>
+                    <Form.Item label="Date of Birth" name="date_of_birth" rules={[{ required: true, message: 'Date of birth is required' }]} style={{ marginBottom: 10 }}>
+                      <DatePicker style={{ width: '100%' }} disabledDate={(current) => current && current > dayjs().endOf('day')} format="YYYY-MM-DD" />
+                    </Form.Item>
+                    <Form.Item label="Gender" name="gender" rules={[{ required: true, message: 'Gender is required' }]} style={{ marginBottom: 10 }}>
+                      <Select options={[{ label: 'Male', value: 'Male' }, { label: 'Female', value: 'Female' }, { label: 'Other', value: 'Other' }]} />
+                    </Form.Item>
+                    <Form.Item label="Contact" name="contact" rules={[{ required: true, message: 'Contact is required' }]} style={{ marginBottom: 10 }}>
+                      <Input />
+                    </Form.Item>
+                    <Form.Item label="Chief Complaint (optional)" name="chief_complaint" style={{ marginBottom: 0 }}>
+                      <TextArea rows={2} placeholder="Brief reason for the visit, if the patient mentions one" />
+                    </Form.Item>
+                  </Card>
+
+                  <Card title="Patient Category" size="small" style={{ marginBottom: 16 }}>
+                    <Form.Item label="Patient Category" name="patient_type" rules={[{ required: true }]} style={{ marginBottom: 10 }}>
+                      <Select options={[{ label: 'Normal', value: 'Normal' }, { label: 'Emergency', value: 'Emergency' }]} />
+                    </Form.Item>
+                    <Form.Item label="Required Department" name="department_id" rules={[{ required: true, message: 'Department is required' }]} style={{ marginBottom: 0 }}>
+                      <Select options={departments.filter((d) => d.dept_code !== 'REG').map((d) => ({ label: d.dept_name, value: d.id }))} />
+                    </Form.Item>
+                    <Form.Item noStyle shouldUpdate={(prev, cur) => prev.department_id !== cur.department_id}>
+                      {() => (departmentsByCode.CONS && form.getFieldValue('department_id') === departmentsByCode.CONS.id ? (
+                        <Form.Item label="Preferred Doctor" name="doctor_id" style={{ marginBottom: 0, marginTop: 10 }}>
+                          <Select allowClear placeholder="No preference — any available doctor" options={doctors.map((d) => ({ label: d.name, value: d.id }))} />
                         </Form.Item>
-                        <Form.Item label="Insurance Card No." name="insurance_ref" rules={[{ required: true, message: 'Insurance card number is required' }]}>
-                          <Input />
-                        </Form.Item>
-                      </>
-                    )}
-                  </Form.Item>
+                      ) : null)}
+                    </Form.Item>
+                  </Card>
+
+                  <Card title="Payment Method" size="small">
+                    <Form.Item label="Payment Method" name="payment_method" rules={[{ required: true }]} style={{ marginBottom: 0 }}>
+                      <Select options={[{ label: 'Cash', value: 'Cash' }, { label: 'Insurance', value: 'Insurance' }]} />
+                    </Form.Item>
+                    <Form.Item noStyle shouldUpdate={(prev, cur) => prev.payment_method !== cur.payment_method}>
+                      {() => form.getFieldValue('payment_method') === 'Insurance' && (
+                        <>
+                          <Form.Item label="Insurance Provider" name="insurance_provider" rules={[{ required: true, message: 'Insurance provider is required' }]} style={{ marginBottom: 10, marginTop: 10 }}>
+                            <Input />
+                          </Form.Item>
+                          <Form.Item label="Insurance Card No." name="insurance_ref" rules={[{ required: true, message: 'Insurance card number is required' }]} style={{ marginBottom: 0 }}>
+                            <Input />
+                          </Form.Item>
+                        </>
+                      )}
+                    </Form.Item>
+                  </Card>
                 </>
               ) : (
                 <Descriptions column={1} size="small" bordered>

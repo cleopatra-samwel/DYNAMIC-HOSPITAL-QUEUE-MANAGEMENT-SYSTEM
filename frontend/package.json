@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "predev": "powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/sync-lan-ip.ps1",
     "dev": "vite",
     "build": "vite build",
     "lint": "oxlint",

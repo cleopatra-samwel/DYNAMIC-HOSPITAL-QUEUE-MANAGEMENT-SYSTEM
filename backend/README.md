@@ -17,8 +17,17 @@ PostgreSQL instance, then:
 ```bash
 php artisan migrate
 php artisan db:seed
-php artisan serve
+composer run serve
 ```
+
+`composer run serve` first syncs `APP_URL`/`SERVER_HOST`/`FRONTEND_URL` here and
+`VITE_API_BASE_URL`/`VITE_REVERB_HOST` in `frontend/.env` to this machine's
+current LAN IP (via `scripts/sync-lan-ip.ps1`), then runs `php artisan serve`.
+This matters because the frontend and `.env`'s QR/tracking links use a LAN IP,
+not `localhost`, so login/API calls silently break after switching networks or
+getting a new DHCP lease — re-run `composer run serve` (or the script
+directly) whenever that happens. `npm run dev` in `frontend/` runs the same
+sync automatically before starting Vite.
 
 Confirm it's alive: `curl http://localhost:8000/api/ping`
 
@@ -52,7 +61,7 @@ curl http://localhost:8000/api/admin/ping -H "Authorization: Bearer <token>"
 
 
 Role	Email	Password
-Administrator	administrator@hospital.test	password
+Administratordministrator@hospital.test	a	password
 Registration Staff	registration.staff@hospital.test	password
 Doctor	doctor@hospital.test	password
 Laboratory Staff	laboratory.staff@hospital.test	password

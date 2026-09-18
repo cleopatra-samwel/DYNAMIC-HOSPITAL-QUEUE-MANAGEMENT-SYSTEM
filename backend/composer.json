@@ -46,9 +46,15 @@
             "npm install --ignore-scripts",
             "npm run build"
         ],
+        "sync-ip": "powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/sync-lan-ip.ps1",
         "dev": [
+            "@sync-ip",
             "Composer\\Config::disableProcessTimeout",
             "@php artisan dev"
+        ],
+        "serve": [
+            "@sync-ip",
+            "@php artisan serve"
         ],
         "test": [
             "@php artisan config:clear --ansi @no_additional_args",
