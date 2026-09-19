@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Department;
 use App\Models\QueueTicket;
+use App\Models\Referral;
+use App\Models\ServiceRequestedTest;
 use App\Models\Visit;
 use App\Services\PriorityEngine;
 use App\Support\DepartmentRoles;
@@ -39,8 +41,10 @@ class DepartmentController extends Controller
     /**
      * Backs each department dashboard's summary cards. Every dashboard uses
      * a different subset of these fields under its own labels (Doctor:
-     * waiting/in_service/completed_today/emergency_unconfirmed; Laboratory:
-     * waiting/in_service/completed_today; Pharmacy: waiting/completed_today/
+     * waiting/from_registration/lab_results_ready/in_service/
+     * pending_referrals/emergency_unconfirmed/completed_today; Laboratory:
+     * waiting/called/pending_tests/in_service/completed_today/
+     * results_sent_to_doctors; Pharmacy: waiting/completed_today/
      * pending_payment) — the shape is a superset so one endpoint serves all
      * three rather than three near-duplicate ones. Every count is a live
      * query, never derived/cached client-side.
@@ -72,6 +76,41 @@ class DepartmentController extends Controller
             'pending_payment' => $inDept()
                 ->whereIn('status', ['WAITING', 'CALLED', 'IN_SERVICE', 'ON_HOLD'])
                 ->whereHas('service.visit', fn ($q) => $q->where('payment_status', 'Pending'))
+                ->count(),
+            // Doctor Role expansion — WAITING tickets fresh from Registration
+            // (either self-check-in's REG hop, or a visit that started
+            // directly in this department with no previous service at all —
+            // VisitController::store's department_id isn't always REG).
+            'from_registration' => $inDept()->where('status', 'WAITING')
+                ->where(fn ($q) => $q
+                    ->whereHas('service', fn ($s) => $s->whereNull('previous_service_id'))
+                    ->orWhereHas('service.previousService.department', fn ($d) => $d->where('dept_code', 'REG')))
+                ->count(),
+            // WAITING tickets whose previous stop was Laboratory — i.e.
+            // patients returning with results ready for review.
+            'lab_results_ready' => $inDept()->where('status', 'WAITING')
+                ->whereHas('service.previousService.department', fn ($d) => $d->where('dept_code', 'LAB'))
+                ->count(),
+            // This doctor's own referrals whose destination ticket hasn't
+            // been called yet — user-scoped like emergency_unconfirmed is
+            // department-agnostic, not $department-scoped.
+            'pending_referrals' => Referral::where('referred_by', $request->user()->id)
+                ->whereHas('toService.queueTicket', fn ($q) => $q->where('status', 'WAITING'))
+                ->count(),
+            // Laboratory Role expansion.
+            'called' => $inDept()->where('status', 'CALLED')->count(),
+            // Requested tests still missing a result, for patients currently
+            // active in this department's own queue (not all-time history).
+            'pending_tests' => ServiceRequestedTest::whereNull('result_value')->whereNull('status')
+                ->whereHas('service.nextService', fn ($s) => $s->where('department_id', $department->id)
+                    ->whereHas('queueTicket', fn ($q) => $q->whereIn('status', ['WAITING', 'CALLED', 'IN_SERVICE'])))
+                ->count(),
+            // Completed today AND forwarded specifically to Consultation
+            // (Laboratory's other forward target, Pharmacy, isn't "sent to
+            // a doctor").
+            'results_sent_to_doctors' => $inDept()->where('status', 'COMPLETED')
+                ->whereDate('completed_at', now()->toDateString())
+                ->whereHas('service.nextService.department', fn ($d) => $d->where('dept_code', 'CONS'))
                 ->count(),
         ]);
     }

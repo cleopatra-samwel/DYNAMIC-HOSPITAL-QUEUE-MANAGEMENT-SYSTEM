@@ -43,8 +43,23 @@ const ACTION_LABELS = {
  * Laboratory, Send to Pharmacy, Forward to Doctor, ...) now lives behind
  * one "View" button, which opens TicketViewModal scoped to this
  * department's role automatically.
+ *
+ * `actionMode` swaps in an alternate Action column; Pharmacy doesn't pass
+ * it and keeps the 5-button row above. Options:
+ *   - 'call-and-secondary' (Doctor): "Call" while waiting, then "Called" +
+ *     a second button (`secondaryActionLabel`, e.g. "Consult") once called.
+ *   - 'call-only' (Laboratory's "Queue" sidebar item): "Call" while
+ *     waiting, then a disabled "Called" label — no further action here,
+ *     the actual work happens on the "Perform Test" page instead.
+ *   - 'review-only' (Laboratory's "Perform Test" sidebar item): no Call
+ *     button at all — just `secondaryActionLabel` (e.g. "Review") once the
+ *     ticket has already been called elsewhere.
+ * All three show "View" once COMPLETED. The secondary/review button
+ * silently fires start-service first (if needed) so the modal opens
+ * directly on the fillable form instead of stopping on an intermediate
+ * "Start Service" screen.
  */
-export default function DepartmentQueuePage({ deptCode, showPaymentStatus = false }) {
+export default function DepartmentQueuePage({ deptCode, showPaymentStatus = false, extraColumns = [], actionMode = 'full', secondaryActionLabel = 'Consult' }) {
   const activeRole = useSelector((state) => state.auth.user?.active_role);
   const [department, setDepartment] = useState(null);
   const [tickets, setTickets] = useState([]);
@@ -144,9 +159,34 @@ export default function DepartmentQueuePage({ deptCode, showPaymentStatus = fals
     }
   };
 
+  // Used by the "Consult"/"Review" secondary button — moves a CALLED
+  // ticket to IN_SERVICE first (if not already there) so TicketViewModal
+  // opens straight on the fillable consultation form, not the "Start
+  // Service" screen.
+  const startAndView = async (ticket) => {
+    if (ticket.status === 'IN_SERVICE') {
+      setViewingTicket(ticket);
+      return;
+    }
+    setActingId(ticket.id);
+    try {
+      const { data } = await apiClient.patch(`/queue-tickets/${ticket.id}/start-service`);
+      refresh();
+      setViewingTicket(data.ticket);
+    } catch (error) {
+      message.error(error.response?.data?.message || 'Could not open the consultation for this ticket.');
+    } finally {
+      setActingId(null);
+    }
+  };
+
   const columns = [
     { title: 'Ticket', dataIndex: 'queue_number' },
     { title: 'Patient', render: (_, t) => t.service?.visit?.patient?.name || '—' },
+    // Opt-in, per-caller extra columns (e.g. Laboratory's Patient ID/Age/
+    // Gender/Referring Doctor/Requested Tests) — Doctor/Pharmacy pass
+    // nothing here and see exactly the same table as before.
+    ...extraColumns,
     { title: 'Priority', render: (_, t) => t.priority_level?.name || '—' },
     {
       title: 'Score',
@@ -179,6 +219,44 @@ export default function DepartmentQueuePage({ deptCode, showPaymentStatus = fals
               <span style={{ color: '#8c8c8c' }}>—</span>
             </Tooltip>
           );
+        }
+        if (actionMode === 'call-and-secondary') {
+          if (['WAITING', 'ON_HOLD'].includes(ticket.status)) {
+            return <Button size="small" loading={busy} onClick={() => runAction(ticket, 'call')}>Call</Button>;
+          }
+          if (['CALLED', 'IN_SERVICE'].includes(ticket.status)) {
+            return (
+              <Space wrap>
+                <Button size="small" disabled>Called</Button>
+                <Button size="small" type="primary" loading={busy} onClick={() => startAndView(ticket)}>{secondaryActionLabel}</Button>
+              </Space>
+            );
+          }
+          if (ticket.status === 'COMPLETED') {
+            return <Button size="small" onClick={() => setViewingTicket(ticket)}>View</Button>;
+          }
+          return <span style={{ color: '#8c8c8c' }}>—</span>;
+        }
+        if (actionMode === 'call-only') {
+          if (['WAITING', 'ON_HOLD'].includes(ticket.status)) {
+            return <Button size="small" loading={busy} onClick={() => runAction(ticket, 'call')}>Call</Button>;
+          }
+          if (['CALLED', 'IN_SERVICE'].includes(ticket.status)) {
+            return <Button size="small" disabled>Called</Button>;
+          }
+          if (ticket.status === 'COMPLETED') {
+            return <Button size="small" onClick={() => setViewingTicket(ticket)}>View</Button>;
+          }
+          return <span style={{ color: '#8c8c8c' }}>—</span>;
+        }
+        if (actionMode === 'review-only') {
+          if (['CALLED', 'IN_SERVICE'].includes(ticket.status)) {
+            return <Button size="small" type="primary" loading={busy} onClick={() => startAndView(ticket)}>{secondaryActionLabel}</Button>;
+          }
+          if (ticket.status === 'COMPLETED') {
+            return <Button size="small" onClick={() => setViewingTicket(ticket)}>View</Button>;
+          }
+          return <span style={{ color: '#8c8c8c' }}>—</span>;
         }
         return (
           <Space wrap>

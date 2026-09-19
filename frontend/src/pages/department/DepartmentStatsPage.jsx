@@ -25,9 +25,9 @@ export default function DepartmentStatsPage({ deptCode, statCards }) {
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
         <OpenDisplayBoardButton departmentId={department?.id} />
       </div>
-      <Row gutter={16}>
+      <Row gutter={[16, 16]}>
         {statCards.map((card) => (
-          <Col xs={24} sm={24 / statCards.length} key={card.key}>
+          <Col xs={24} sm={12} md={8} lg={6} key={card.key}>
             <Card
               hoverable={!!card.path}
               style={card.path ? { ...cardStyle, cursor: 'pointer' } : cardStyle}

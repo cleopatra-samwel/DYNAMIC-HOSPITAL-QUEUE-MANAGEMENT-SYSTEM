@@ -7,6 +7,7 @@ use App\Models\Service;
 use App\Models\ServiceRequestedTest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 /**
  * The categorized Laboratory request checklist (Structured Laboratory
@@ -29,6 +30,18 @@ class RequestedTestController extends Controller
         return response()->json([
             'lab_test_catalog_ids' => $origin->requestedTests()->pluck('lab_test_catalog_id'),
             'other' => $origin->visit->clinicalRecord?->requested_tests_other,
+            // Doctor Role expansion — structured per-test results, additive
+            // alongside the two keys above (kept for backward compatibility).
+            'tests' => $origin->requestedTests()->with('labTest:id,name,category')->get()
+                ->map(fn (ServiceRequestedTest $t) => [
+                    'id' => $t->id,
+                    'lab_test_catalog_id' => $t->lab_test_catalog_id,
+                    'name' => $t->labTest->name,
+                    'category' => $t->labTest->category,
+                    'result_value' => $t->result_value,
+                    'reference_range' => $t->reference_range,
+                    'status' => $t->status,
+                ]),
         ]);
     }
 
@@ -69,6 +82,65 @@ class RequestedTestController extends Controller
         return response()->json([
             'lab_test_catalog_ids' => $service->requestedTests()->pluck('lab_test_catalog_id'),
             'other' => $data['other'] ?? null,
+        ]);
+    }
+
+    /**
+     * Laboratory Staff-only, and only from the LAB-side service (the
+     * opposite of update() above, which is CONS-only) — records the
+     * per-test result/reference-range/status Laboratory actually measured.
+     * Every submitted row id is checked against labRequestOriginService()'s
+     * own rows first, so one service can never overwrite another's results.
+     */
+    public function updateResults(Request $request, Service $service)
+    {
+        abort_unless(
+            $request->user()->hasAnyRole(['Laboratory Staff', 'Administrator']),
+            403,
+            'Only Laboratory Staff may record test results.'
+        );
+
+        $service->loadMissing('department');
+        abort_unless(
+            $service->department?->dept_code === 'LAB',
+            422,
+            'Test results can only be recorded on a Laboratory service.'
+        );
+
+        $data = $request->validate([
+            'results' => ['present', 'array'],
+            'results.*.id' => ['required', 'integer', 'exists:service_requested_tests,id'],
+            'results.*.result_value' => ['nullable', 'string', 'max:255'],
+            'results.*.reference_range' => ['nullable', 'string', 'max:255'],
+            'results.*.status' => ['nullable', Rule::in(['Normal', 'Abnormal', 'Critical'])],
+        ]);
+
+        $origin = $service->labRequestOriginService();
+        $validIds = $origin->requestedTests()->pluck('id');
+
+        DB::transaction(function () use ($data, $validIds) {
+            foreach ($data['results'] as $row) {
+                abort_unless($validIds->contains($row['id']), 422, 'One or more results do not belong to this service\'s requested tests.');
+
+                ServiceRequestedTest::whereKey($row['id'])->update([
+                    'result_value' => $row['result_value'] ?? null,
+                    'reference_range' => $row['reference_range'] ?? null,
+                    'status' => $row['status'] ?? null,
+                ]);
+            }
+        });
+
+        return response()->json([
+            'tests' => $origin->requestedTests()->with('labTest:id,name,category')->get()
+                ->map(fn (ServiceRequestedTest $t) => [
+                    'id' => $t->id,
+                    'lab_test_catalog_id' => $t->lab_test_catalog_id,
+                    'name' => $t->labTest->name,
+                    'category' => $t->labTest->category,
+                    'result_value' => $t->result_value,
+                    'reference_range' => $t->reference_range,
+                    'status' => $t->status,
+                ]),
         ]);
     }
 }

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Card, Checkbox, DatePicker, Descriptions, Divider, Form, Input, Modal, Radio, Select, Spin, Typography, message } from 'antd';
+import { Alert, Button, Card, Checkbox, DatePicker, Descriptions, Divider, Form, Input, InputNumber, Modal, Radio, Select, Spin, Table, Tag, Typography, message } from 'antd';
 import dayjs from 'dayjs';
 import apiClient from '../services/apiClient';
 import { formatStatusLabel } from '../utils/formatLabel';
 import { groupByCategory } from '../utils/labTestCategories';
+import { ageFromDob } from '../utils/age';
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -21,6 +22,23 @@ const CATEGORY_HEADER_STYLE = {
 };
 
 const WAITING_STATUSES = ['WAITING', 'ON_HOLD'];
+
+const NEXT_ACTION_LABELS = {
+  laboratory: 'Sent to Laboratory',
+  pharmacy: 'Sent to Pharmacy',
+  refer: 'Referred to Another Department',
+  followup: 'Follow-up',
+  none: 'Completed — no further service',
+};
+
+const LAB_RESULT_STATUS_COLORS = { Normal: 'green', Abnormal: 'orange', Critical: 'red' };
+
+const LAB_RESULT_COLUMNS = [
+  { title: 'Test', dataIndex: 'name' },
+  { title: 'Result', dataIndex: 'result_value', render: (v) => v || '—' },
+  { title: 'Reference Range', dataIndex: 'reference_range', render: (v) => v || '—' },
+  { title: 'Status', dataIndex: 'status', render: (v) => (v ? <Tag color={LAB_RESULT_STATUS_COLORS[v]}>{v}</Tag> : '—') },
+];
 
 /**
  * Unified "View" entry point (Structured Laboratory Request Form's
@@ -66,6 +84,13 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
   const [selectedTestIds, setSelectedTestIds] = useState([]);
   const [otherText, setOtherText] = useState('');
 
+  // Structured per-test results — labTestRows is the full requested-tests
+  // list (id/name/category/result_value/reference_range/status) from the
+  // server; testResults is Laboratory Staff's in-progress edits, keyed by
+  // row id, merged in on submit.
+  const [labTestRows, setLabTestRows] = useState([]);
+  const [testResults, setTestResults] = useState({});
+
   // Laboratory Staff's own choice of where to send the patient next.
   const [labForwardTarget, setLabForwardTarget] = useState('CONS');
 
@@ -106,9 +131,17 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
       .then(({ data }) => {
         setSelectedTestIds(data.lab_test_catalog_ids);
         setOtherText(data.other || '');
+        setLabTestRows(data.tests || []);
+        setTestResults(Object.fromEntries((data.tests || []).map((t) => [t.id, {
+          result_value: t.result_value, reference_range: t.reference_range, status: t.status,
+        }])));
       })
       .catch(() => {});
   }, [open, serviceId, deptCode]);
+
+  const updateTestResult = (rowId, field, value) => {
+    setTestResults((prev) => ({ ...prev, [rowId]: { ...prev[rowId], [field]: value } }));
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -195,10 +228,28 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
     try {
       const values = await form.validateFields([
         'doctor_symptoms_notes', 'doctor_preliminary_diagnosis', 'referral_target',
+        'temperature', 'blood_pressure', 'weight', 'pulse_rate',
         'final_diagnosis', 'treatment_plan', 'patient_signature_name', 'patient_signature_phone',
       ]);
+
+      // Conditional sub-fields aren't in the fixed list above since they
+      // only exist in the DOM for one Next Action choice at a time —
+      // validated separately, only for whichever one is actually selected.
+      let extra = {};
+      if (values.referral_target === 'refer') {
+        extra = await form.validateFields(['refer_department_id', 'referral_reason', 'referral_notes']);
+      } else if (values.referral_target === 'followup') {
+        extra = await form.validateFields(['follow_up_date', 'follow_up_instructions']);
+      }
+
       setSubmitting(true);
-      await apiClient.patch(`/visits/${visitId}/clinical-record`, values);
+      await apiClient.patch(`/visits/${visitId}/clinical-record`, {
+        ...values,
+        ...(values.referral_target === 'followup' ? {
+          follow_up_date: extra.follow_up_date.format('YYYY-MM-DD'),
+          follow_up_instructions: extra.follow_up_instructions,
+        } : {}),
+      });
       await apiClient.put(`/services/${serviceId}/requested-tests`, {
         lab_test_catalog_ids: selectedTestIds,
         other: otherText || null,
@@ -208,7 +259,15 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
         await apiClient.post(`/visits/${visitId}/services`, { department_id: departmentsByCode.LAB.id });
       } else if (values.referral_target === 'pharmacy') {
         await apiClient.post(`/visits/${visitId}/services`, { department_id: departmentsByCode.PHARM.id });
+      } else if (values.referral_target === 'refer') {
+        await apiClient.post(`/visits/${visitId}/services`, {
+          department_id: extra.refer_department_id,
+          referral: { reason: extra.referral_reason, notes: extra.referral_notes || undefined },
+        });
       } else {
+        // 'followup' and 'none' both complete this ticket directly, with
+        // no further service — follow-up date/instructions were already
+        // saved on the clinical record above.
         await apiClient.patch(`/queue-tickets/${ticket.id}/complete`);
       }
 
@@ -223,11 +282,23 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
     }
   };
 
-  const submitLab = async () => {
+  const doSubmitLab = async () => {
     try {
       const values = await form.validateFields(['lab_results_notes']);
       setSubmitting(true);
       await apiClient.patch(`/visits/${visitId}/clinical-record`, values);
+
+      if (labTestRows.length > 0) {
+        await apiClient.put(`/services/${serviceId}/requested-tests/results`, {
+          results: labTestRows.map((row) => ({
+            id: row.id,
+            result_value: testResults[row.id]?.result_value || null,
+            reference_range: testResults[row.id]?.reference_range || null,
+            status: testResults[row.id]?.status || null,
+          })),
+        });
+      }
+
       await apiClient.post(`/visits/${visitId}/services`, { department_id: departmentsByCode[labForwardTarget].id });
       message.success('Saved and forwarded.');
       onChanged?.();
@@ -238,6 +309,31 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // "Verify Results" — a confirmation gate, not a new persisted ticket
+  // status (the lifecycle stays WAITING/CALLED/IN_SERVICE/COMPLETED as
+  // everywhere else in the app). Prevents accidentally sending results
+  // with a requested test left blank without at least a deliberate
+  // "send anyway."
+  const submitLab = () => {
+    const pendingNames = labTestRows
+      .filter((row) => !testResults[row.id]?.result_value && !testResults[row.id]?.status)
+      .map((row) => row.name);
+
+    if (pendingNames.length > 0) {
+      Modal.confirm({
+        title: 'Some tests are still pending',
+        content: `No result has been entered for: ${pendingNames.join(', ')}. Send to the doctor anyway?`,
+        okText: 'Send Anyway',
+        okButtonProps: { danger: true },
+        cancelText: 'Go Back',
+        onOk: doSubmitLab,
+      });
+      return;
+    }
+
+    doSubmitLab();
   };
 
   const submitPharmacy = async () => {
@@ -390,6 +486,30 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
 
             {deptCode === 'CONS' && (
               <>
+                {isInService ? (
+                  <Card title="Vital Signs" size="small" style={{ marginBottom: 16 }}>
+                    <Form.Item label="Temperature (°C)" name="temperature" style={{ marginBottom: 10 }}>
+                      <InputNumber style={{ width: '100%' }} step={0.1} min={30} max={45} />
+                    </Form.Item>
+                    <Form.Item label="Blood Pressure" name="blood_pressure" style={{ marginBottom: 10 }}>
+                      <Input placeholder="e.g. 120/80" />
+                    </Form.Item>
+                    <Form.Item label="Weight (kg)" name="weight" style={{ marginBottom: 10 }}>
+                      <InputNumber style={{ width: '100%' }} step={0.1} min={0} max={500} />
+                    </Form.Item>
+                    <Form.Item label="Pulse Rate (bpm)" name="pulse_rate" style={{ marginBottom: 0 }}>
+                      <InputNumber style={{ width: '100%' }} min={0} max={300} />
+                    </Form.Item>
+                  </Card>
+                ) : (record.temperature || record.blood_pressure || record.weight || record.pulse_rate) && (
+                  <Descriptions column={2} size="small" bordered style={{ marginBottom: 16 }}>
+                    <Descriptions.Item label="Temperature">{record.temperature ? `${record.temperature} °C` : '—'}</Descriptions.Item>
+                    <Descriptions.Item label="Blood Pressure">{record.blood_pressure || '—'}</Descriptions.Item>
+                    <Descriptions.Item label="Weight">{record.weight ? `${record.weight} kg` : '—'}</Descriptions.Item>
+                    <Descriptions.Item label="Pulse Rate">{record.pulse_rate ? `${record.pulse_rate} bpm` : '—'}</Descriptions.Item>
+                  </Descriptions>
+                )}
+
                 <Divider orientation="left" plain>Consultation</Divider>
                 {isInService ? (
                   <>
@@ -410,7 +530,7 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
                 <Divider orientation="left" plain>Request Laboratory</Divider>
                 {isInService && (
                   <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-                    Tick at least one test (or write one under Others) before choosing Laboratory as the referral below.
+                    Tick at least one test (or write one under Others) before choosing "Send to Laboratory" below.
                   </Text>
                 )}
                 {catalogGroups.map((group) => {
@@ -443,29 +563,82 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
                   </Descriptions>
                 )}
 
-                {isInService ? (
-                  <Form.Item label="Referral" name="referral_target" rules={[{ required: true, message: 'Choose where this patient goes next' }]}>
-                    <Select
-                      options={[
-                        { label: 'Laboratory', value: 'laboratory' },
-                        { label: 'Pharmacy', value: 'pharmacy' },
-                        { label: 'None — complete, no further service', value: 'none' },
-                      ]}
-                    />
-                  </Form.Item>
-                ) : (
-                  <Descriptions column={1} size="small" bordered style={{ marginBottom: 16 }}>
-                    <Descriptions.Item label="Referral">{record.referral_target || <Text type="secondary">Not recorded</Text>}</Descriptions.Item>
-                  </Descriptions>
-                )}
-
-                {record.lab_results_notes && (
+                {(labTestRows.length > 0 || record.lab_results_notes) && (
                   <>
                     <Divider orientation="left" plain>Laboratory Results</Divider>
-                    <Descriptions column={1} size="small" bordered style={{ marginBottom: 16 }}>
-                      <Descriptions.Item label="Results">{record.lab_results_notes}</Descriptions.Item>
-                    </Descriptions>
+                    {labTestRows.length > 0 && (
+                      <Table
+                        size="small"
+                        pagination={false}
+                        rowKey="id"
+                        columns={LAB_RESULT_COLUMNS}
+                        dataSource={labTestRows}
+                        style={{ marginBottom: record.lab_results_notes ? 16 : 0 }}
+                      />
+                    )}
+                    {record.lab_results_notes && (
+                      <Descriptions column={1} size="small" bordered style={{ marginBottom: 16 }}>
+                        <Descriptions.Item label="Overall Summary">{record.lab_results_notes}</Descriptions.Item>
+                      </Descriptions>
+                    )}
                   </>
+                )}
+
+                <Divider orientation="left" plain>Next Action</Divider>
+                {isInService ? (
+                  <>
+                    <Form.Item label="Next Action" name="referral_target" rules={[{ required: true, message: 'Choose the next action for this patient' }]}>
+                      <Select
+                        options={[
+                          { label: 'Send to Laboratory', value: 'laboratory' },
+                          { label: 'Send to Pharmacy', value: 'pharmacy' },
+                          { label: 'Refer to Another Department', value: 'refer' },
+                          { label: 'Follow-up', value: 'followup' },
+                          { label: 'Complete Consultation', value: 'none' },
+                        ]}
+                      />
+                    </Form.Item>
+                    <Form.Item noStyle shouldUpdate={(prev, cur) => prev.referral_target !== cur.referral_target}>
+                      {() => {
+                        const action = form.getFieldValue('referral_target');
+                        if (action === 'refer') {
+                          return (
+                            <>
+                              <Form.Item label="Refer To Department" name="refer_department_id" rules={[{ required: true, message: 'Choose a department' }]}>
+                                <Select options={departments.filter((d) => d.dept_code !== 'REG' && d.dept_code !== 'CONS').map((d) => ({ label: d.dept_name, value: d.id }))} />
+                              </Form.Item>
+                              <Form.Item label="Reason for Referral" name="referral_reason" rules={[{ required: true, message: 'Reason is required' }]}>
+                                <TextArea rows={2} />
+                              </Form.Item>
+                              <Form.Item label="Additional Notes (optional)" name="referral_notes">
+                                <TextArea rows={2} />
+                              </Form.Item>
+                            </>
+                          );
+                        }
+                        if (action === 'followup') {
+                          return (
+                            <>
+                              <Form.Item label="Follow-up Date" name="follow_up_date" rules={[{ required: true, message: 'Follow-up date is required' }]}>
+                                <DatePicker style={{ width: '100%' }} disabledDate={(current) => current && current < dayjs().startOf('day')} format="YYYY-MM-DD" />
+                              </Form.Item>
+                              <Form.Item label="Follow-up Instructions" name="follow_up_instructions" rules={[{ required: true, message: 'Instructions are required' }]}>
+                                <TextArea rows={2} />
+                              </Form.Item>
+                            </>
+                          );
+                        }
+                        return null;
+                      }}
+                    </Form.Item>
+                  </>
+                ) : (
+                  <Descriptions column={1} size="small" bordered style={{ marginBottom: 16 }}>
+                    <Descriptions.Item label="Next Action">{record.referral_target ? (NEXT_ACTION_LABELS[record.referral_target] || record.referral_target) : <Text type="secondary">Not recorded</Text>}</Descriptions.Item>
+                    {record.follow_up_date && (
+                      <Descriptions.Item label="Follow-up">{dayjs(record.follow_up_date).format('DD MMM YYYY')} — {record.follow_up_instructions}</Descriptions.Item>
+                    )}
+                  </Descriptions>
                 )}
 
                 <Divider orientation="left" plain>Final Review &amp; Signature</Divider>
@@ -496,6 +669,18 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
 
             {deptCode === 'LAB' && (
               <>
+                <Descriptions column={2} size="small" bordered style={{ marginBottom: 16 }}>
+                  <Descriptions.Item label="Age">{ageFromDob(patient?.date_of_birth) ?? '—'}</Descriptions.Item>
+                  <Descriptions.Item label="Gender">{patient?.gender || '—'}</Descriptions.Item>
+                  <Descriptions.Item label="Phone Number">{patient?.contact || '—'}</Descriptions.Item>
+                  <Descriptions.Item label="Date/Time">{ticket?.created_at ? dayjs(ticket.created_at).format('DD MMM YYYY, HH:mm') : '—'}</Descriptions.Item>
+                  {/* Both computed server-side (QueueTicketController::attachLabExtras)
+                      — Service.doctor_id is only ever an optional
+                      pre-selection, never who actually treated the patient. */}
+                  <Descriptions.Item label="Referring Doctor">{ticket?.referring_doctor || '—'}</Descriptions.Item>
+                  <Descriptions.Item label="Referring Department">{ticket?.service?.previousService?.department?.dept_name || '—'}</Descriptions.Item>
+                </Descriptions>
+
                 <Divider orientation="left" plain>Doctor's Request</Divider>
                 {selectedGroups.length === 0 && !otherText ? (
                   <Text type="secondary">Not recorded</Text>
@@ -517,11 +702,53 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
                   </>
                 )}
 
+                {/* Why this patient was sent — Doctor's own clinical
+                    reasoning, not shown to Lab anywhere else. */}
+                {(record.doctor_symptoms_notes || record.doctor_preliminary_diagnosis) && (
+                  <Descriptions column={1} size="small" bordered style={{ marginBottom: 16 }}>
+                    <Descriptions.Item label="Reason for Laboratory Investigation">{record.doctor_symptoms_notes || <Text type="secondary">Not recorded</Text>}</Descriptions.Item>
+                    <Descriptions.Item label="Doctor's Notes">{record.doctor_preliminary_diagnosis || <Text type="secondary">Not recorded</Text>}</Descriptions.Item>
+                  </Descriptions>
+                )}
+
                 <Divider orientation="left" plain>Results</Divider>
                 {isInService ? (
                   <>
-                    <Form.Item label="Lab Results" name="lab_results_notes" rules={[{ required: true, message: 'Results are required before forwarding' }]}>
-                      <TextArea rows={4} placeholder="e.g. Malaria (MRDT): positive. FBC: mild anemia." />
+                    {labTestRows.length > 0 ? (
+                      <div style={{ marginBottom: 16 }}>
+                        {labTestRows.map((row) => (
+                          <div key={row.id} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
+                            <div style={{ minWidth: 160 }}>{row.name}</div>
+                            <Input
+                              style={{ width: 160 }}
+                              placeholder="Result"
+                              value={testResults[row.id]?.result_value || ''}
+                              onChange={(e) => updateTestResult(row.id, 'result_value', e.target.value)}
+                            />
+                            <Input
+                              style={{ width: 140 }}
+                              placeholder="Reference range"
+                              value={testResults[row.id]?.reference_range || ''}
+                              onChange={(e) => updateTestResult(row.id, 'reference_range', e.target.value)}
+                            />
+                            <Select
+                              style={{ width: 130 }}
+                              placeholder="Status"
+                              allowClear
+                              value={testResults[row.id]?.status || undefined}
+                              onChange={(value) => updateTestResult(row.id, 'status', value)}
+                              options={[{ label: 'Normal', value: 'Normal' }, { label: 'Abnormal', value: 'Abnormal' }, { label: 'Critical', value: 'Critical' }]}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+                        No specific tests were requested — record an overall summary below.
+                      </Text>
+                    )}
+                    <Form.Item label="Overall Summary (optional)" name="lab_results_notes">
+                      <TextArea rows={3} placeholder="Any narrative context not captured per-test above" />
                     </Form.Item>
                     <Form.Item label="Forward To">
                       <Radio.Group value={labForwardTarget} onChange={(e) => setLabForwardTarget(e.target.value)}>
@@ -531,9 +758,21 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
                     </Form.Item>
                   </>
                 ) : (
-                  <Descriptions column={1} size="small" bordered>
-                    <Descriptions.Item label="Results">{record.lab_results_notes || <Text type="secondary">Not recorded</Text>}</Descriptions.Item>
-                  </Descriptions>
+                  <>
+                    {labTestRows.length > 0 && (
+                      <Table
+                        size="small"
+                        pagination={false}
+                        rowKey="id"
+                        columns={LAB_RESULT_COLUMNS}
+                        dataSource={labTestRows}
+                        style={{ marginBottom: 16 }}
+                      />
+                    )}
+                    <Descriptions column={1} size="small" bordered>
+                      <Descriptions.Item label="Overall Summary">{record.lab_results_notes || <Text type="secondary">Not recorded</Text>}</Descriptions.Item>
+                    </Descriptions>
+                  </>
                 )}
               </>
             )}

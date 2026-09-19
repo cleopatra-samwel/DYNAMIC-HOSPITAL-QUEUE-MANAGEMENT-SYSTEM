@@ -178,18 +178,13 @@ export default function QueuePage() {
             </Tooltip>
           );
         }
-        // Call is the only clickable action left on this page — once
-        // CALLED, Register lives exclusively on the "Register Patient"
-        // page (RegisterPatientPage.jsx), not here. The button still
-        // relabels to "Called" (disabled) so the row visibly reflects
-        // that it's been called, instead of just going blank.
+        // "Call" is the only action this column ever shows — once CALLED
+        // (or any later status), the row is informational only (Register
+        // lives exclusively on the "Register Patient" page).
         if (['WAITING', 'ON_HOLD'].includes(ticket.status)) {
           return (
             <Button size="small" loading={busy} onClick={() => callNextInDepartment(ticket)}>Call</Button>
           );
-        }
-        if (ticket.status === 'CALLED') {
-          return <Button size="small" disabled>Called</Button>;
         }
         return <span style={{ color: '#8c8c8c' }}>—</span>;
       },

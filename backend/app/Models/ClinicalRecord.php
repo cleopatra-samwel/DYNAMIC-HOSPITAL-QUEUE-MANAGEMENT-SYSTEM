@@ -18,8 +18,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'visit_id',
     'chief_complaint',
     'doctor_symptoms_notes', 'doctor_preliminary_diagnosis', 'requested_tests_other', 'referral_target',
+    'temperature', 'blood_pressure', 'weight', 'pulse_rate',
     'lab_results_notes', 'lab_technician_id',
     'final_diagnosis', 'treatment_plan', 'patient_signature_name', 'patient_signature_phone', 'signed_at',
+    'follow_up_date', 'follow_up_instructions',
 ])]
 class ClinicalRecord extends Model
 {
@@ -29,6 +31,7 @@ class ClinicalRecord extends Model
     {
         return [
             'signed_at' => 'datetime',
+            'follow_up_date' => 'date',
         ];
     }
 
@@ -49,5 +52,11 @@ class ClinicalRecord extends Model
             && filled($this->treatment_plan)
             && filled($this->patient_signature_name)
             && filled($this->patient_signature_phone);
+    }
+
+    /** "Follow-up" Next Action is gated on this, client-side — mirrors isReadyForPharmacy()'s pattern. */
+    public function isFollowUpComplete(): bool
+    {
+        return filled($this->follow_up_date) && filled($this->follow_up_instructions);
     }
 }

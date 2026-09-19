@@ -1,6 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { DashboardOutlined, TeamOutlined, AlertOutlined, UnorderedListOutlined, BellOutlined, MedicineBoxOutlined, ExperimentOutlined, SafetyCertificateOutlined, DollarOutlined, BarChartOutlined, ClockCircleOutlined, SoundOutlined, AuditOutlined, UserSwitchOutlined, ExperimentFilled, MedicineBoxFilled } from '@ant-design/icons';
+import { DashboardOutlined, TeamOutlined, AlertOutlined, UnorderedListOutlined, BellOutlined, MedicineBoxOutlined, ExperimentOutlined, SafetyCertificateOutlined, DollarOutlined, BarChartOutlined, ClockCircleOutlined, SoundOutlined, AuditOutlined, UserSwitchOutlined, ExperimentFilled, MedicineBoxFilled, SolutionOutlined, SettingOutlined } from '@ant-design/icons';
 import LoginPage from '../pages/login/LoginPage';
 import TrackingPage from '../pages/public/TrackingPage';
 import WaitingDisplayPage from '../pages/public/WaitingDisplayPage';
@@ -26,8 +26,10 @@ import BillingDashboardPage from '../pages/billing/BillingDashboardPage';
 import PendingPaymentsPage from '../pages/billing/PendingPaymentsPage';
 import DoctorDashboardPage from '../pages/department/DoctorDashboardPage';
 import DoctorQueuePage from '../pages/department/DoctorQueuePage';
+import DoctorSettingsPage from '../pages/department/DoctorSettingsPage';
 import LaboratoryDashboardPage from '../pages/department/LaboratoryDashboardPage';
 import LaboratoryQueuePage from '../pages/department/LaboratoryQueuePage';
+import LaboratoryPerformTestPage from '../pages/department/LaboratoryPerformTestPage';
 import PharmacyDashboardPage from '../pages/department/PharmacyDashboardPage';
 import PharmacyQueuePage from '../pages/department/PharmacyQueuePage';
 import ProtectedRoute from './protectedRoutes';
@@ -74,17 +76,33 @@ const BILLING_MENU_ITEMS = [
 // Doctor, Laboratory Staff, and Pharmacy Staff each get their OWN sidebar
 // shape — fewer, different items than Registration Staff's, not a reuse
 // of that structure.
+//
+// Queue / Registration Queue / Laboratory Queue / New Patients all render
+// the exact same CONS queue (DoctorQueuePage) — intentionally kept as 4
+// separate sidebar entries rather than collapsed into one, per explicit
+// sign-off, even though the underlying data is identical across all four.
 const DOCTOR_MENU_ITEMS = [
   { key: 'dashboard', label: 'Dashboard', icon: <DashboardOutlined />, path: '/doctor/dashboard', breadcrumb: ['Doctor', 'Dashboard'] },
-  { key: 'queue', label: 'Consultation Queue', icon: <UnorderedListOutlined />, path: '/doctor/queue', breadcrumb: ['Doctor', 'Consultation Queue'] },
+  // "Queue" removed from the sidebar per explicit request — the route
+  // itself (/doctor/queue) stays, since DoctorDashboardPage's stat cards
+  // still link to it; Registration Queue/Laboratory Queue show identical
+  // data via the same underlying page either way.
+  { key: 'registration-queue', label: 'Registration Queue', icon: <SolutionOutlined />, path: '/doctor/registration-queue', breadcrumb: ['Doctor', 'Registration Queue'] },
+  { key: 'laboratory-queue', label: 'Laboratory Queue', icon: <ExperimentOutlined />, path: '/doctor/laboratory-queue', breadcrumb: ['Doctor', 'Laboratory Queue'] },
   { key: 'emergency', label: 'Emergency Confirmations', icon: <AlertOutlined />, path: '/doctor/emergency', breadcrumb: ['Doctor', 'Emergency Confirmations'] },
   { key: 'notifications', label: 'Notification', icon: <BellOutlined />, path: '/doctor/notifications', breadcrumb: ['Doctor', 'Notification'] },
+  { key: 'settings', label: 'Settings', icon: <SettingOutlined />, path: '/doctor/settings', breadcrumb: ['Doctor', 'Settings'] },
 ];
 
+// Queue / Patient Details / Perform Test all render the exact same
+// "Queue" (call-only) and "Perform Test" (review-only) are now two
+// genuinely different Action columns on the same underlying ticket data —
+// see DepartmentQueuePage's actionMode prop.
 const LABORATORY_MENU_ITEMS = [
   { key: 'dashboard', label: 'Dashboard', icon: <DashboardOutlined />, path: '/laboratory/dashboard', breadcrumb: ['Laboratory', 'Dashboard'] },
-  { key: 'queue', label: 'Laboratory Queue', icon: <ExperimentOutlined />, path: '/laboratory/queue', breadcrumb: ['Laboratory', 'Queue'] },
-  { key: 'notifications', label: 'Notification', icon: <BellOutlined />, path: '/laboratory/notifications', breadcrumb: ['Laboratory', 'Notification'] },
+  { key: 'queue', label: 'Queue', icon: <UnorderedListOutlined />, path: '/laboratory/queue', breadcrumb: ['Laboratory', 'Queue'] },
+  { key: 'perform-test', label: 'Perform Test', icon: <ExperimentOutlined />, path: '/laboratory/perform-test', breadcrumb: ['Laboratory', 'Perform Test'] },
+  { key: 'notifications', label: 'Notifications', icon: <BellOutlined />, path: '/laboratory/notifications', breadcrumb: ['Laboratory', 'Notifications'] },
 ];
 
 const PHARMACY_MENU_ITEMS = [
@@ -147,8 +165,11 @@ export default function AppRoutes() {
         <Route element={<DashboardLayout menuItems={DOCTOR_MENU_ITEMS} />}>
           <Route path="/doctor/dashboard" element={<DoctorDashboardPage />} />
           <Route path="/doctor/queue" element={<DoctorQueuePage />} />
+          <Route path="/doctor/registration-queue" element={<DoctorQueuePage />} />
+          <Route path="/doctor/laboratory-queue" element={<DoctorQueuePage />} />
           <Route path="/doctor/emergency" element={<EmergencyPage />} />
           <Route path="/doctor/notifications" element={<NotificationPage />} />
+          <Route path="/doctor/settings" element={<DoctorSettingsPage />} />
         </Route>
       </Route>
 
@@ -157,6 +178,7 @@ export default function AppRoutes() {
         <Route element={<DashboardLayout menuItems={LABORATORY_MENU_ITEMS} />}>
           <Route path="/laboratory/dashboard" element={<LaboratoryDashboardPage />} />
           <Route path="/laboratory/queue" element={<LaboratoryQueuePage />} />
+          <Route path="/laboratory/perform-test" element={<LaboratoryPerformTestPage />} />
           <Route path="/laboratory/notifications" element={<NotificationPage />} />
         </Route>
       </Route>

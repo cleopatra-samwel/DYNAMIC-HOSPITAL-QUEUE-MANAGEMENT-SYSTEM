@@ -7,6 +7,7 @@ use App\Models\Department;
 use App\Models\PriorityLevel;
 use App\Models\QueueEvent;
 use App\Models\QueueTicket;
+use App\Models\Referral;
 use App\Models\Service;
 use App\Models\ServiceRequestedTest;
 use App\Models\Visit;
@@ -50,6 +51,13 @@ class ServiceFlowController extends Controller
             // the effective replacement for that original "preferred
             // doctor" step.
             'doctor_id' => ['nullable', 'integer', new ActiveDoctor()],
+            // Doctor Role expansion — "Refer to Another Department" Next
+            // Action. Optional: every other caller of this endpoint (LAB/
+            // PHARM forwards, Registration's REG->CONS handoff) omits it
+            // entirely and behaves exactly as before.
+            'referral' => ['sometimes', 'array'],
+            'referral.reason' => ['required_with:referral', 'string', 'max:255'],
+            'referral.notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
         $targetDept = Department::findOrFail($data['department_id']);
@@ -65,6 +73,14 @@ class ServiceFlowController extends Controller
             ->where('status', 'IN_SERVICE')
             ->with('service.department')
             ->first();
+
+        if (array_key_exists('referral', $data)) {
+            abort_unless(
+                Department::isReferrable($targetDept->dept_code, $currentTicketForAuth?->service->department->dept_code ?? ''),
+                422,
+                'Cannot refer to the current department or Registration.'
+            );
+        }
 
         // Never a Patient, never automatic/bulk. Clinical staff may forward
         // from anywhere; Registration Staff may only complete the ONE
@@ -106,16 +122,23 @@ class ServiceFlowController extends Controller
             );
         }
 
-        // Laboratory cannot forward an empty result back to Doctor.
+        // Laboratory cannot forward an empty result back to Doctor — an
+        // overall summary note OR at least one structured per-test result
+        // satisfies this (the two are complementary, not either/or by
+        // requirement — see the structured lab results migration).
         if ($currentTicketForAuth && $currentTicketForAuth->service->department->dept_code === 'LAB' && $targetDept->dept_code === 'CONS') {
+            $hasStructuredResult = ServiceRequestedTest::where('service_id', $currentTicketForAuth->service->labRequestOriginService()->id)
+                ->whereNotNull('result_value')
+                ->exists();
+
             abort_if(
-                blank($clinicalRecord->lab_results_notes),
+                blank($clinicalRecord->lab_results_notes) && ! $hasStructuredResult,
                 422,
-                'Lab results notes must be recorded before forwarding back to Doctor.'
+                'Lab results notes or at least one recorded test result must be present before forwarding back to Doctor.'
             );
         }
 
-        $newService = DB::transaction(function () use ($visit, $targetDept, $holdCurrent, $request, $data) {
+        $result = DB::transaction(function () use ($visit, $targetDept, $holdCurrent, $request, $data) {
             $currentTicket = QueueTicket::query()
                 ->whereHas('service', fn ($q) => $q->where('visit_id', $visit->id))
                 ->where('status', 'IN_SERVICE')
@@ -192,6 +215,23 @@ class ServiceFlowController extends Controller
                 'event_time' => now(),
             ]);
 
+            // Doctor Role expansion — "Refer to Another Department". Created
+            // in the SAME transaction as the service/ticket above, so a
+            // referral can never exist without the ticket it points to, or
+            // vice versa.
+            $referral = null;
+            if (array_key_exists('referral', $data)) {
+                $referral = Referral::create([
+                    'visit_id' => $visit->id,
+                    'from_service_id' => $currentTicket?->service->id,
+                    'to_service_id' => $newService->id,
+                    'to_department_id' => $targetDept->id,
+                    'referred_by' => $request->user()->id,
+                    'reason' => $data['referral']['reason'],
+                    'notes' => $data['referral']['notes'] ?? null,
+                ]);
+            }
+
             $visit->update([
                 'overall_status' => QueueJourney::stateFor($targetDept->dept_code, 'WAITING'),
             ]);
@@ -209,11 +249,12 @@ class ServiceFlowController extends Controller
                 app(NotificationService::class)->notifyWaiting($newTicket);
             }
 
-            return $newService;
+            return ['service' => $newService, 'referral' => $referral];
         });
 
         return response()->json([
-            'service' => $newService->load(['department', 'queueTicket.priorityLevel']),
+            'service' => $result['service']->load(['department', 'queueTicket.priorityLevel']),
+            'referral' => $result['referral']?->load(['toDepartment']),
         ], 201);
     }
 }

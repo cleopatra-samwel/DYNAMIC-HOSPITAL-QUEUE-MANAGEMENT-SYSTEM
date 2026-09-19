@@ -5,9 +5,9 @@ export default function LaboratoryDashboardPage() {
     <DepartmentStatsPage
       deptCode="LAB"
       statCards={[
-        { key: 'waiting', label: 'Waiting', path: '/laboratory/queue' },
-        { key: 'in_service', label: 'In Service', path: '/laboratory/queue' },
-        { key: 'completed_today', label: 'Completed Today', path: '/laboratory/test-results' },
+        { key: 'waiting', label: 'Patients Waiting', path: '/laboratory/queue' },
+        { key: 'pending_tests', label: 'Pending Tests', path: '/laboratory/perform-test' },
+        { key: 'completed_today', label: 'Completed Tests', path: '/laboratory/queue' },
       ]}
     />
   );

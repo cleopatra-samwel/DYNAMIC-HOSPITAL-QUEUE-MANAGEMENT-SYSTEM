@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AlertOutlined, CheckCircleOutlined, ClockCircleOutlined, DollarOutlined, SolutionOutlined } from '@ant-design/icons';
+import { AlertOutlined, CheckCircleOutlined, ClockCircleOutlined, DollarOutlined, ExperimentOutlined, PhoneOutlined, SendOutlined, SolutionOutlined } from '@ant-design/icons';
 import apiClient from '../../services/apiClient';
 
 export const STAT_ICONS = {
@@ -9,6 +9,12 @@ export const STAT_ICONS = {
   urgent: <AlertOutlined />,
   emergency_unconfirmed: <AlertOutlined />,
   pending_payment: <DollarOutlined />,
+  from_registration: <SolutionOutlined />,
+  lab_results_ready: <ExperimentOutlined />,
+  pending_referrals: <SendOutlined />,
+  called: <PhoneOutlined />,
+  pending_tests: <ExperimentOutlined />,
+  results_sent_to_doctors: <SendOutlined />,
 };
 
 export const STAT_COLORS = {
@@ -17,6 +23,11 @@ export const STAT_COLORS = {
   urgent: '#8c1d2d',
   emergency_unconfirmed: '#8c1d2d',
   pending_payment: '#b8860b',
+  lab_results_ready: '#1a7f37',
+  pending_referrals: '#b8860b',
+  called: '#8c1d2d',
+  pending_tests: '#b8860b',
+  results_sent_to_doctors: '#1a7f37',
 };
 
 /** Resolves a department by dept_code, then fetches its live stats. */

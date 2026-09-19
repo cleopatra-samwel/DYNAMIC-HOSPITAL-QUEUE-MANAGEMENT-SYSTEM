@@ -11,12 +11,14 @@ use App\Http\Controllers\Api\DoctorController;
 use App\Http\Controllers\Api\LabTestCatalogController;
 use App\Http\Controllers\Api\MedicationCatalogController;
 use App\Http\Controllers\Api\InsuranceCardController;
+use App\Http\Controllers\Api\LabResultsController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PatientController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PriorityLevelController;
 use App\Http\Controllers\Api\QueueEventController;
 use App\Http\Controllers\Api\QueueTicketController;
+use App\Http\Controllers\Api\ReferralController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\RequestedTestController;
 use App\Http\Controllers\Api\ServiceController;
@@ -120,6 +122,12 @@ Route::middleware('auth:sanctum')->group(function () {
     // Service::labRequestOriginService).
     Route::get('/services/{service}/requested-tests', [RequestedTestController::class, 'index']);
     Route::put('/services/{service}/requested-tests', [RequestedTestController::class, 'update']);
+    Route::put('/services/{service}/requested-tests/results', [RequestedTestController::class, 'updateResults']);
+
+    Route::get('/referrals', [ReferralController::class, 'index']);
+    Route::get('/referrals/{referral}', [ReferralController::class, 'show']);
+
+    Route::get('/lab-results', [LabResultsController::class, 'index']);
 
     // Emergency confirmation is clinical — only a Doctor account may call
     // these, enforced here at the middleware level, not just hidden in the UI.

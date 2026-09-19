@@ -28,11 +28,17 @@ class ClinicalRecordController extends Controller
         'doctor_preliminary_diagnosis' => 'Doctor',
         'requested_tests_other' => 'Doctor',
         'referral_target' => 'Doctor',
+        'temperature' => 'Doctor',
+        'blood_pressure' => 'Doctor',
+        'weight' => 'Doctor',
+        'pulse_rate' => 'Doctor',
         'lab_results_notes' => 'Laboratory Staff',
         'final_diagnosis' => 'Doctor',
         'treatment_plan' => 'Doctor',
         'patient_signature_name' => 'Doctor',
         'patient_signature_phone' => 'Doctor',
+        'follow_up_date' => 'Doctor',
+        'follow_up_instructions' => 'Doctor',
     ];
 
     public function show(Request $request, Visit $visit)
@@ -67,12 +73,18 @@ class ClinicalRecordController extends Controller
             'doctor_symptoms_notes' => ['sometimes', 'nullable', 'string', 'max:4000'],
             'doctor_preliminary_diagnosis' => ['sometimes', 'nullable', 'string', 'max:4000'],
             'requested_tests_other' => ['sometimes', 'nullable', 'string', 'max:2000'],
-            'referral_target' => ['sometimes', 'nullable', Rule::in(['laboratory', 'pharmacy', 'none'])],
+            'referral_target' => ['sometimes', 'nullable', Rule::in(['laboratory', 'pharmacy', 'refer', 'followup', 'none'])],
+            'temperature' => ['sometimes', 'nullable', 'numeric', 'between:30,45'],
+            'blood_pressure' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'weight' => ['sometimes', 'nullable', 'numeric', 'between:0,500'],
+            'pulse_rate' => ['sometimes', 'nullable', 'integer', 'between:0,300'],
             'lab_results_notes' => ['sometimes', 'nullable', 'string', 'max:4000'],
             'final_diagnosis' => ['sometimes', 'nullable', 'string', 'max:4000'],
             'treatment_plan' => ['sometimes', 'nullable', 'string', 'max:4000'],
             'patient_signature_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'patient_signature_phone' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'follow_up_date' => ['sometimes', 'nullable', 'date'],
+            'follow_up_instructions' => ['sometimes', 'nullable', 'string', 'max:2000'],
         ]);
 
         $updates = array_intersect_key($data, array_flip($submittedFields));

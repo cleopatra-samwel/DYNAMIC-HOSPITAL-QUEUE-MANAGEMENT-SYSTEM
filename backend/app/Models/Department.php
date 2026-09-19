@@ -56,4 +56,10 @@ class Department extends Model
     {
         return $this->hasMany(Service::class);
     }
+
+    /** REG is never a referral target (it's the entry point, not a destination — see ServiceFlowController::store), and referring a department to itself makes no sense. */
+    public static function isReferrable(string $deptCode, string $fromDeptCode): bool
+    {
+        return $deptCode !== 'REG' && $deptCode !== $fromDeptCode;
+    }
 }

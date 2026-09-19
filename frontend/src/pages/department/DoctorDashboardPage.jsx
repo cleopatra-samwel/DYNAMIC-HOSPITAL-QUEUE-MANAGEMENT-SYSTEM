@@ -5,9 +5,8 @@ export default function DoctorDashboardPage() {
     <DepartmentStatsPage
       deptCode="CONS"
       statCards={[
-        { key: 'waiting', label: 'Waiting', path: '/doctor/queue' },
-        { key: 'in_service', label: 'In Consultation', path: '/doctor/queue' },
-        { key: 'emergency_unconfirmed', label: 'Emergency Pending Confirmation', path: '/doctor/emergency' },
+        { key: 'from_registration', label: 'Patients from Registration', path: '/doctor/registration-queue' },
+        { key: 'lab_results_ready', label: 'Laboratory Results Ready', path: '/doctor/laboratory-queue' },
         { key: 'completed_today', label: 'Completed Today', path: '/doctor/queue' },
       ]}
     />
