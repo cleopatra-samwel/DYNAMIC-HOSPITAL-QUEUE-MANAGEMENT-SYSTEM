@@ -72,7 +72,8 @@ export default function PendingPaymentsPage() {
     // Convenient default for Laboratory: pre-select whatever the Doctor
     // ticked on the Request Laboratory checklist — still freely
     // add/removable below, in case what was actually performed differs
-    // from what was originally requested.
+    // from what was originally requested. Pharmacy gets the same
+    // treatment from the Doctor's prescription checklist.
     const preSelected = row.dept_code === 'LAB'
       ? labTests
         .filter((t) => row.requested_test_catalog_ids?.includes(t.id))
@@ -84,7 +85,18 @@ export default function PendingPaymentsPage() {
           label: t.name,
           amount: Number(t.price),
         }))
-      : [];
+      : row.dept_code === 'PHARM'
+        ? medications
+          .filter((m) => row.prescribed_medication_catalog_ids?.includes(m.id))
+          .map((m) => ({
+            key: `medication-${m.id}-${Date.now()}`,
+            catalog_type: 'medication',
+            catalog_item_id: m.id,
+            custom_label: null,
+            label: m.name,
+            amount: Number(m.price),
+          }))
+        : [];
     setItems(preSelected);
     setCatalogSelection(null);
     setOtherLabel('');
@@ -206,12 +218,25 @@ export default function PendingPaymentsPage() {
           />
         )}
 
+        {target && target.dept_code === 'PHARM' && (target.prescribed_medication_catalog_ids?.length > 0 || target.prescribed_medications_other) && (
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="Doctor prescribed"
+            description={[
+              ...medications.filter((m) => target.prescribed_medication_catalog_ids?.includes(m.id)).map((m) => m.name),
+              target.prescribed_medications_other ? `Others: ${target.prescribed_medications_other}` : null,
+            ].filter(Boolean).join(', ')}
+          />
+        )}
+
         {target && target.dept_code !== 'LAB' && (target.final_diagnosis || target.treatment_plan) && (
           <Alert
             type="info"
             showIcon
             style={{ marginBottom: 16 }}
-            message="Prescribed / diagnosis"
+            message="Diagnosis / treatment"
             description={[target.final_diagnosis, target.treatment_plan].filter(Boolean).join(' — ')}
           />
         )}

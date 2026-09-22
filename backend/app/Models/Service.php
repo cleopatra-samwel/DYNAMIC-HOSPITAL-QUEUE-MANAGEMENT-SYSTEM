@@ -62,15 +62,53 @@ class Service extends Model
         return $this->hasMany(ServiceRequestedTest::class);
     }
 
+    public function prescribedMedications(): HasMany
+    {
+        return $this->hasMany(ServicePrescribedMedication::class);
+    }
+
     /**
      * The Laboratory checklist (service_requested_tests) is always stored
-     * against the REQUESTING Consultation service, but Laboratory Staff's
-     * view and Billing's pre-selection both start from a LAB service —
-     * one hop back via previous_service_id is exactly the Consultation
-     * service that forwarded them here (ServiceFlowController::store sets
-     * this at creation time), so no deeper chain-walk is needed.
+     * against the CONS service that actually filled it in. That's usually
+     * one hop back from a LAB service (Laboratory Staff's view, Billing's
+     * pre-selection) — but the Doctor's SECOND consultation, opened once
+     * Laboratory forwards the patient back for review ("Result" on the
+     * Laboratory Queue), is ALSO a CONS service, with no rows of its own
+     * in service_requested_tests. A naive "any CONS service is its own
+     * origin" check returned that empty second service, so the doctor saw
+     * no lab answers at all. Walk back through previous_service_id — CONS
+     * and LAB legitimately alternate across one lab round-trip — until
+     * landing on a CONS service that actually owns rows. A fresh CONS
+     * service about to be filled in for the very first time (no
+     * previousService yet, or a request never sent to Laboratory) has
+     * nowhere left to walk to, so it correctly stops on itself.
      */
     public function labRequestOriginService(): Service
+    {
+        $current = $this;
+        $current->loadMissing('department', 'previousService');
+
+        while (
+            $current->previousService
+            && ($current->department?->dept_code !== 'CONS' || $current->requestedTests()->doesntExist())
+        ) {
+            $current = $current->previousService;
+            $current->loadMissing('department', 'previousService');
+        }
+
+        return $current;
+    }
+
+    /**
+     * Same one-hop pattern as labRequestOriginService(), for the medication
+     * checklist (service_prescribed_medications) — always stored against
+     * the PRESCRIBING Consultation service. A Pharmacy service reached via
+     * Laboratory Staff forwarding straight to Pharmacy (bypassing Doctor
+     * review) has no Consultation service one hop back, so this simply
+     * falls through to an empty checklist for that case, same as
+     * labRequestOriginService() would.
+     */
+    public function pharmacyRequestOriginService(): Service
     {
         $this->loadMissing('department', 'previousService');
 

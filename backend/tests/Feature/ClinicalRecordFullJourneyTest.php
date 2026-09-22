@@ -170,6 +170,18 @@ class ClinicalRecordFullJourneyTest extends TestCase
             ->assertJsonPath('clinical_record.doctor_preliminary_diagnosis', 'Suspected malaria.')
             ->assertJsonPath('clinical_record.lab_results_notes', 'MRDT: positive for P. falciparum. FBC: mild anemia.');
 
+        // The "Result" form (this SECOND Consultation service, opened once
+        // Laboratory forwards the patient back) must still resolve back to
+        // the checklist the Doctor originally requested on the FIRST
+        // Consultation service — Service::labRequestOriginService() walks
+        // the CONS->LAB->CONS chain rather than assuming this service is
+        // its own origin just because it's also CONS.
+        $this->actingAs($this->doctor)->getJson("/api/services/{$consService2Id}/requested-tests")
+            ->assertStatus(200)
+            ->assertJsonPath('lab_test_catalog_ids', [$fbc->id])
+            ->assertJsonPath('other', 'Malaria test (MRDT).')
+            ->assertJsonPath('tests.0.name', 'CBC, Platelet Count');
+
         $this->actingAs($this->doctor)->patchJson("/api/visits/{$visitId}/clinical-record", [
             'final_diagnosis' => 'Confirmed uncomplicated malaria.',
             'treatment_plan' => 'Artemether-Lumefantrine, twice daily for 3 days.',

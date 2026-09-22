@@ -303,6 +303,7 @@ export default function DepartmentQueuePage({ deptCode, showPaymentStatus = fals
         onClose={() => setViewingTicket(null)}
         onChanged={refresh}
         onTicketCalled={playAnnouncement}
+        secondaryActionLabel={secondaryActionLabel}
       />
     </div>
   );

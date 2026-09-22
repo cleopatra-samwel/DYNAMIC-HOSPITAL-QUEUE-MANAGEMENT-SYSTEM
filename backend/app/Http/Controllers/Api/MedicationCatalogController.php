@@ -6,15 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Models\MedicationCatalog;
 use Illuminate\Http\Request;
 
-/** Same pattern as LabTestCatalogController — Administrator manages, Cashier/Billing Staff reads it to build an itemized Pharmacy charge. */
+/** Same pattern as LabTestCatalogController — Administrator manages, Cashier/Billing Staff reads it to build an itemized Pharmacy charge, and Doctor reads it to prescribe from (PrescribedMedicationController). */
 class MedicationCatalogController extends Controller
 {
     public function index(Request $request)
     {
         abort_unless(
-            $request->user()->hasAnyRole(['Administrator', 'Cashier/Billing Staff']),
+            $request->user()->hasAnyRole(['Administrator', 'Cashier/Billing Staff', 'Doctor']),
             403,
-            'Only Administrator or Cashier/Billing Staff may view the medication catalog.'
+            'Only Administrator, Cashier/Billing Staff, or Doctor may view the medication catalog.'
         );
 
         return response()->json(['medications' => MedicationCatalog::orderBy('name')->get()]);

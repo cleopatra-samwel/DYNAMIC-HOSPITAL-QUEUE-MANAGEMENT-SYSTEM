@@ -166,7 +166,7 @@ export default function AppRoutes() {
           <Route path="/doctor/dashboard" element={<DoctorDashboardPage />} />
           <Route path="/doctor/queue" element={<DoctorQueuePage />} />
           <Route path="/doctor/registration-queue" element={<DoctorQueuePage />} />
-          <Route path="/doctor/laboratory-queue" element={<DoctorQueuePage />} />
+          <Route path="/doctor/laboratory-queue" element={<DoctorQueuePage secondaryActionLabel="Result" />} />
           <Route path="/doctor/emergency" element={<EmergencyPage />} />
           <Route path="/doctor/notifications" element={<NotificationPage />} />
           <Route path="/doctor/settings" element={<DoctorSettingsPage />} />

@@ -140,6 +140,14 @@ class PaymentController extends Controller
                     $requestedTestCatalogIds = $origin->requestedTests()->pluck('lab_test_catalog_id')->all();
                 }
 
+                $prescribedMedicationCatalogIds = [];
+                $prescribedMedicationsOther = null;
+                if ($service->department?->dept_code === 'PHARM') {
+                    $origin = $service->pharmacyRequestOriginService();
+                    $prescribedMedicationCatalogIds = $origin->prescribedMedications()->pluck('medication_catalog_id')->all();
+                    $prescribedMedicationsOther = $origin->visit?->clinicalRecord?->prescribed_medications_other;
+                }
+
                 return [
                     'service_id' => $service->id,
                     'visit_id' => $service->visit_id,
@@ -150,6 +158,8 @@ class PaymentController extends Controller
                     'created_at' => $service->created_at,
                     'requested_test_catalog_ids' => $requestedTestCatalogIds,
                     'requested_tests_other' => $service->visit?->clinicalRecord?->requested_tests_other,
+                    'prescribed_medication_catalog_ids' => $prescribedMedicationCatalogIds,
+                    'prescribed_medications_other' => $prescribedMedicationsOther,
                     'final_diagnosis' => $service->visit?->clinicalRecord?->final_diagnosis,
                     'treatment_plan' => $service->visit?->clinicalRecord?->treatment_plan,
                 ];

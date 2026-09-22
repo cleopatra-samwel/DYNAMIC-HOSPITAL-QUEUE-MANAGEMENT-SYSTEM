@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\LabResultsController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PatientController;
 use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\PrescribedMedicationController;
 use App\Http\Controllers\Api\PriorityLevelController;
 use App\Http\Controllers\Api\QueueEventController;
 use App\Http\Controllers\Api\QueueTicketController;
@@ -123,6 +124,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/services/{service}/requested-tests', [RequestedTestController::class, 'index']);
     Route::put('/services/{service}/requested-tests', [RequestedTestController::class, 'update']);
     Route::put('/services/{service}/requested-tests/results', [RequestedTestController::class, 'updateResults']);
+
+    // The Doctor's medication prescription checklist — keyed by service,
+    // same pattern as the Laboratory request checklist above (see
+    // Service::pharmacyRequestOriginService).
+    Route::get('/services/{service}/prescribed-medications', [PrescribedMedicationController::class, 'index']);
+    Route::put('/services/{service}/prescribed-medications', [PrescribedMedicationController::class, 'update']);
 
     Route::get('/referrals', [ReferralController::class, 'index']);
     Route::get('/referrals/{referral}', [ReferralController::class, 'show']);
