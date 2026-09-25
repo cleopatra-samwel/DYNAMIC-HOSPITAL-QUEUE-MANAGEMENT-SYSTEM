@@ -1,11 +1,8 @@
 import DepartmentQueuePage from './DepartmentQueuePage';
 
-// "Call" while waiting, then "Called" + "Dispense" once called — Dispense
-// silently starts service (if needed) so TicketViewModal opens straight on
-// the PHARM medicine/dispensing form instead of stopping on an intermediate
-// "Start Service" screen.
+// The Pharmacy "Queue" sidebar item: "Call" once the patient has paid at the
+// cashier (disabled until then), then a disabled "Called" label. The actual
+// dispensing happens on the "Dispensing" page (PharmacyDispensingPage).
 export default function PharmacyQueuePage() {
-  return (
-    <DepartmentQueuePage deptCode="PHARM" showPaymentStatus actionMode="call-and-secondary" secondaryActionLabel="Dispense" />
-  );
+  return <DepartmentQueuePage deptCode="PHARM" showPaymentStatus actionMode="call-only" />;
 }

@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
-import { Alert, Button, Card, Checkbox, DatePicker, Descriptions, Divider, Form, Input, InputNumber, Modal, Radio, Select, Spin, Table, Tabs, Tag, Typography, message } from 'antd';
-import { ArrowLeftOutlined, CheckCircleOutlined, CheckOutlined, DeleteOutlined, EditOutlined, ExperimentOutlined, HeartOutlined, InfoCircleOutlined, MedicineBoxOutlined, ReloadOutlined, SaveOutlined, SendOutlined, TeamOutlined, UserOutlined } from '@ant-design/icons';
+import { Alert, Button, Card, Checkbox, DatePicker, Descriptions, Divider, Form, Input, InputNumber, Modal, Radio, Select, Space, Spin, Table, Tabs, Tag, Typography, message } from 'antd';
+import { ArrowLeftOutlined, CheckCircleOutlined, CheckOutlined, DeleteOutlined, EditOutlined, PrinterOutlined, ExperimentOutlined, HeartOutlined, InfoCircleOutlined, MedicineBoxOutlined, ReloadOutlined, SaveOutlined, SendOutlined, TeamOutlined, UserOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import apiClient from '../services/apiClient';
 import { formatStatusLabel } from '../utils/formatLabel';
@@ -70,6 +70,80 @@ const FORWARD_BUTTON_LABELS = {
   followup: 'Schedule Follow-up',
   none: 'Complete Consultation',
 };
+
+/** Draw-with-finger/mouse signature box. Reports a PNG data URL (or null once cleared) through onChange. */
+function SignaturePad({ onChange }) {
+  const canvasRef = useRef(null);
+  const drawing = useRef(false);
+
+  const point = (event) => {
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    return { x: ((event.clientX - rect.left) * canvas.width) / rect.width, y: ((event.clientY - rect.top) * canvas.height) / rect.height };
+  };
+
+  const start = (event) => {
+    const ctx = canvasRef.current.getContext('2d');
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#111';
+    const { x, y } = point(event);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    drawing.current = true;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const move = (event) => {
+    if (!drawing.current) return;
+    const ctx = canvasRef.current.getContext('2d');
+    const { x, y } = point(event);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+
+  const end = () => {
+    if (!drawing.current) return;
+    drawing.current = false;
+    onChange(canvasRef.current.toDataURL('image/png'));
+  };
+
+  const clear = () => {
+    const canvas = canvasRef.current;
+    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+    onChange(null);
+  };
+
+  return (
+    <div>
+      <canvas
+        ref={canvasRef}
+        width={640}
+        height={180}
+        style={{ width: '100%', height: 140, border: '1px dashed #9db0d0', borderRadius: 8, background: '#fff', touchAction: 'none', cursor: 'crosshair' }}
+        onPointerDown={start}
+        onPointerMove={move}
+        onPointerUp={end}
+        onPointerLeave={end}
+      />
+      <Button size="small" style={{ marginTop: 6 }} onClick={clear}>Clear Signature</Button>
+    </div>
+  );
+}
+
+/** Opens a print window with one label per dispensed medicine (patient, medicine, how to take it, quantity). */
+function printMedicineLabels({ patient, rows }) {
+  const labels = rows.map((row) => `<div class="label"><strong>${row.name}</strong><br/>${[row.dosage, row.frequency, row.duration].filter(Boolean).join(' · ') || '&nbsp;'}<br/>Quantity: ${row.quantity}<br/><small>Patient: ${patient?.name || ''} ${patient?.patient_number ? `(${patient.patient_number})` : ''}<br/>Dispensed: ${new Date().toLocaleDateString()}</small></div>`).join('');
+  const win = window.open('', '_blank', 'width=560,height=720');
+  if (!win) {
+    message.error('Allow pop-ups to print the labels.');
+    return;
+  }
+  win.document.write(`<html><head><title>Medicine Labels</title><style>body{font-family:Arial,sans-serif;padding:12px}.label{border:1px solid #333;border-radius:6px;padding:10px;margin-bottom:10px;width:320px;page-break-inside:avoid}</style></head><body>${labels || '<p>No medicines dispensed yet.</p>'}</body></html>`);
+  win.document.close();
+  win.focus();
+  win.print();
+}
 
 /**
  * Unified "View" entry point (Structured Laboratory Request Form's
@@ -141,6 +215,9 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
   const [medicationOtherText, setMedicationOtherText] = useState('');
   // Per-medicine dosage / frequency / duration / quantity, keyed by medication_catalog_id.
   const [medicationDetails, setMedicationDetails] = useState({});
+  // Pharmacy dispensing: quantity handed over per medicine (null/absent = not dispensed) and the patient's new signature.
+  const [dispensedQty, setDispensedQty] = useState({});
+  const [dispensingSignature, setDispensingSignature] = useState(null);
 
   // Pharmacy's own free-text note — services.notes, not a clinical_records field.
   const [dispensingNotes, setDispensingNotes] = useState('');
@@ -239,6 +316,7 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
         setMedicationDetails(Object.fromEntries((data.medications || []).map((m) => [m.medication_catalog_id, {
           dosage: m.dosage, frequency: m.frequency, duration: m.duration, quantity: m.quantity,
         }])));
+        setDispensedQty(Object.fromEntries((data.medications || []).filter((m) => m.dispensed_quantity).map((m) => [m.medication_catalog_id, m.dispensed_quantity])));
       })
       .catch(() => {});
   }, [open, serviceId, deptCode]);
@@ -249,6 +327,7 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
     setLabForwardTarget('CONS');
     setActiveTestId(null);
     setLabTab('ordered');
+    setDispensingSignature(null);
     if (deptCode === 'REG' && patient) {
       form.setFieldsValue({
         name: patient.name,
@@ -310,6 +389,8 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
   const isResultReview = secondaryActionLabel === 'Result';
   // The redesigned "Laboratory Results - Return to Doctor" form: only while the doctor is actively reviewing returned results.
   const isResultForm = deptCode === 'CONS' && isInService && isResultReview;
+  // The redesigned Pharmacy dispensing form: while the patient is being served at Pharmacy.
+  const isPharmForm = deptCode === 'PHARM' && isInService;
 
   const runQuickAction = async (action) => {
     setQuickActing(true);
@@ -506,26 +587,85 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
     doSubmitLab();
   };
 
-  const submitPharmacy = async () => {
+  const saveDispensing = () => apiClient.put(`/services/${serviceId}/prescribed-medications/dispensing`, {
+    items: selectedMedications.map((med) => ({ medication_catalog_id: med.id, dispensed_quantity: dispensedQty[med.id] || null })),
+  });
+
+  // Saves everything typed on the dispensing form so far, without completing it.
+  const persistPharmacyForm = async () => {
+    await saveDispensing();
+    if (dispensingNotes) {
+      await apiClient.patch(`/services/${serviceId}/notes`, { notes: dispensingNotes });
+    }
+    if (dispensingSignature) {
+      await apiClient.patch(`/visits/${visitId}/clinical-record`, { dispensing_signature: dispensingSignature });
+    }
+  };
+
+  const savePharmacyDraft = async () => {
     setSubmitting(true);
     try {
-      if (dispensingNotes) {
-        await apiClient.patch(`/services/${serviceId}/notes`, { notes: dispensingNotes });
-      }
+      await persistPharmacyForm();
+      message.success('Draft saved.');
+    } catch (err) {
+      message.error(err.response?.data?.message || 'Could not save the draft.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const printDispensedLabels = async () => {
+    const rows = selectedMedications
+      .filter((med) => dispensedQty[med.id])
+      .map((med) => ({ name: med.name, ...medicationDetails[med.id], quantity: dispensedQty[med.id] }));
+    try {
+      await saveDispensing();
+    } catch (err) {
+      message.error(err.response?.data?.message || 'Could not save dispensing before printing.');
+      return;
+    }
+    printMedicineLabels({ patient, rows });
+  };
+
+  const doCompleteDispensing = async () => {
+    setSubmitting(true);
+    try {
+      await persistPharmacyForm();
       await apiClient.patch(`/queue-tickets/${ticket.id}/complete`);
       try {
         await apiClient.patch(`/visits/${visitId}/complete`);
-        message.success('Completed and visit closed.');
+        message.success('Dispensing completed and visit closed.');
       } catch (closeError) {
         message.warning(`Completed, but the visit could not be closed yet: ${closeError.response?.data?.message || 'other services are still open.'}`);
       }
       onChanged?.();
       onClose();
     } catch (err) {
-      message.error(err.response?.data?.message || 'Could not complete this ticket.');
+      message.error(err.response?.data?.message || 'Could not complete dispensing.');
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // The patient signs (after receiving the service and medicines) before it can be completed.
+  const submitPharmacy = () => {
+    if (!dispensingSignature && !record?.dispensing_signature) {
+      message.warning('Ask the patient to sign to confirm they received their medicines.');
+      return;
+    }
+    const remaining = selectedMedications.filter((med) => !dispensedQty[med.id]).length;
+    if (remaining > 0) {
+      Modal.confirm({
+        title: 'Some medicines are not marked as dispensed',
+        content: `${remaining} medicine(s) are still pending. Complete dispensing anyway?`,
+        okText: 'Complete Anyway',
+        okButtonProps: { danger: true },
+        cancelText: 'Go Back',
+        onOk: doCompleteDispensing,
+      });
+      return;
+    }
+    doCompleteDispensing();
   };
 
   const submitByDept = { REG: submitRegistration, CONS: submitDoctor, LAB: submitLab, PHARM: submitPharmacy };
@@ -600,7 +740,16 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
 
   return (
     <Modal
-      title={isResultForm ? (
+      title={isPharmForm ? (
+        <div className="billing-title">
+          <span className="billing-title__icon"><MedicineBoxOutlined /></span>
+          <div>
+            <div className="billing-title__main">Pharmacy – Dispensing Form</div>
+            <div className="billing-title__sub">View prescription details and dispense to the patient.</div>
+          </div>
+          <Tag color="blue" style={{ marginLeft: 'auto', marginRight: 24 }}>{dayjs().format('DD MMM YYYY')}</Tag>
+        </div>
+      ) : isResultForm ? (
         <div className="billing-title">
           <span className="billing-title__icon"><ExperimentOutlined /></span>
           <div>
@@ -628,13 +777,13 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
       ) : `${deptCode === 'REG' ? 'Register Patient' : 'View'} — ${ticket?.queue_number || ''}`}
       open={open}
       onCancel={onClose}
-      footer={isResultForm ? null : footer}
-      width={isResultForm ? 1120 : deptCode === 'CONS' ? 960 : deptCode === 'LAB' ? 1000 : 680}
+      footer={isResultForm || isPharmForm ? null : footer}
+      width={isResultForm ? 1120 : isPharmForm ? 1100 : deptCode === 'CONS' ? 960 : deptCode === 'LAB' ? 1000 : 680}
       destroyOnHidden
     >
       {loading ? <Spin /> : error ? <Alert type="error" showIcon message={error} /> : record && (
         <>
-          {deptCode !== 'CONS' && deptCode !== 'LAB' && summary}
+          {deptCode !== 'CONS' && deptCode !== 'LAB' && !isPharmForm && summary}
 
           <Form form={form} layout="vertical">
             {/* Not shown for REG — it's the same chief_complaint the
@@ -1306,7 +1455,126 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
               </>
             )}
 
-            {deptCode === 'PHARM' && (
+            {isPharmForm && (
+              <>
+                <div className="lab-top">
+                  <div className="billing-info">
+                    <div className="billing-info__patient">
+                      <span className="billing-avatar"><UserOutlined /></span>
+                      <div>
+                        <div className="billing-label">Patient Name</div>
+                        <div className="billing-strong">{patient?.name || '—'}</div>
+                        <div className="billing-small">Patient ID: {patient?.patient_number || '—'}</div>
+                        <div className="billing-small">Age: {ageFromDob(patient?.date_of_birth) ?? '—'} &nbsp;|&nbsp; Gender: {patient?.gender || '—'}</div>
+                      </div>
+                    </div>
+                    <div className="billing-info__diagnosis">
+                      <div>
+                        <div className="billing-small"><strong>Queue No:</strong> {ticket?.queue_number}</div>
+                        <div className="billing-small"><strong>Department:</strong> {ticket?.service?.previousService?.department?.dept_name || '—'}</div>
+                        <div className="billing-small"><strong>Doctor:</strong> {ticket?.referring_doctor || '—'}</div>
+                        <div className="billing-small"><strong>Visit Date:</strong> {dayjs(ticket?.service?.visit?.visit_date || ticket?.created_at).format('DD MMM YYYY')}</div>
+                        <Tag color="green" style={{ marginTop: 6 }}>Prescription Ready</Tag>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="billing-summary" style={{ marginTop: 0 }}>
+                    <h4 className="billing-section"><HeartOutlined /> Diagnosis</h4>
+                    <div className="billing-strong" style={{ marginBottom: 6 }}>{record.final_diagnosis || record.doctor_preliminary_diagnosis || 'Not recorded'}</div>
+                    <div className="billing-small">Treatment plan: {record.treatment_plan || '—'}</div>
+                  </div>
+                </div>
+
+                <div className="billing-grid" style={{ marginTop: 16 }}>
+                  <div>
+                    <h4 className="billing-section" style={{ marginTop: 0 }}><MedicineBoxOutlined /> Prescription Details</h4>
+                    <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>Medicines ordered by the doctor — mark each one as you hand it over.</Text>
+                    <Table
+                      rowKey="id"
+                      size="small"
+                      pagination={false}
+                      dataSource={selectedMedications}
+                      locale={{ emptyText: 'No medicine was prescribed.' }}
+                      columns={[
+                        { title: '#', width: 40, render: (_, __, index) => index + 1 },
+                        { title: 'Medicine', dataIndex: 'name' },
+                        { title: 'Dosage', render: (_, med) => medicationDetails[med.id]?.dosage || '—' },
+                        { title: 'Frequency', render: (_, med) => medicationDetails[med.id]?.frequency || '—' },
+                        { title: 'Duration', render: (_, med) => medicationDetails[med.id]?.duration || '—' },
+                        { title: 'Qty', width: 60, render: (_, med) => medicationDetails[med.id]?.quantity || 1 },
+                        {
+                          title: 'Dispense',
+                          width: 170,
+                          render: (_, med) => {
+                            const prescribed = medicationDetails[med.id]?.quantity || 1;
+                            const done = !!dispensedQty[med.id];
+                            return (
+                              <Space.Compact>
+                                <InputNumber size="small" min={0} max={prescribed} style={{ width: 64 }} value={dispensedQty[med.id] ?? undefined} placeholder={String(prescribed)} onChange={(value) => setDispensedQty((prev) => ({ ...prev, [med.id]: value || null }))} />
+                                <Button size="small" type={done ? 'default' : 'primary'} onClick={() => setDispensedQty((prev) => ({ ...prev, [med.id]: done ? null : prescribed }))}>{done ? 'Undo' : 'Dispense'}</Button>
+                              </Space.Compact>
+                            );
+                          },
+                        },
+                        { title: 'Status', render: (_, med) => (dispensedQty[med.id] ? <Tag color="green">Dispensed</Tag> : <Tag color="gold">Pending</Tag>) },
+                      ]}
+                    />
+                    {(medicationOtherText || record.prescription_notes) && (
+                      <Descriptions column={1} size="small" bordered style={{ marginTop: 10 }}>
+                        {medicationOtherText && <Descriptions.Item label="Other Medication">{medicationOtherText}</Descriptions.Item>}
+                        {record.prescription_notes && <Descriptions.Item label="Doctor's Prescription Notes">{record.prescription_notes}</Descriptions.Item>}
+                      </Descriptions>
+                    )}
+                  </div>
+
+                  <div>
+                    <div className="billing-summary" style={{ marginBottom: 16 }}>
+                      <h4 className="billing-section" style={{ marginTop: 0 }}><CheckCircleOutlined /> Dispensing Summary</h4>
+                      <div className="billing-row"><span>Total Medicines</span><strong>{selectedMedications.length}</strong></div>
+                      <div className="billing-row"><span>Dispensed</span><strong style={{ color: '#1a7f37' }}>{selectedMedications.filter((med) => dispensedQty[med.id]).length}</strong></div>
+                      <div className="billing-row"><span>Remaining</span><strong style={{ color: '#d92b3a' }}>{selectedMedications.filter((med) => !dispensedQty[med.id]).length}</strong></div>
+                      <Button
+                        block
+                        style={{ marginTop: 8 }}
+                        onClick={() => setDispensedQty(Object.fromEntries(selectedMedications.map((med) => [med.id, medicationDetails[med.id]?.quantity || 1])))}
+                      >
+                        Mark All Dispensed
+                      </Button>
+                    </div>
+
+                    <div className="billing-summary" style={{ marginBottom: 16 }}>
+                      <h4 className="billing-section" style={{ marginTop: 0 }}><EditOutlined /> Notes / Instructions</h4>
+                      <TextArea rows={3} maxLength={500} showCount placeholder="Add any special instructions for the patient…" value={dispensingNotes} onChange={(e) => setDispensingNotes(e.target.value)} />
+                    </div>
+
+                    <div className="billing-summary">
+                      <h4 className="billing-section" style={{ marginTop: 0 }}><UserOutlined /> Patient Signature</h4>
+                      <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+                        The patient signs below after receiving the service and medicines.
+                      </Text>
+                      {record.dispensing_signature && !dispensingSignature && (
+                        <div style={{ marginBottom: 8 }}>
+                          <img src={record.dispensing_signature} alt="Saved patient signature" style={{ maxWidth: '100%', maxHeight: 90, border: '1px solid #d0d9e8', borderRadius: 6, background: '#fff' }} />
+                          <div className="billing-small">Signed {record.dispensing_signed_at ? dayjs(record.dispensing_signed_at).format('DD MMM YYYY HH:mm') : ''} — sign again below to replace.</div>
+                        </div>
+                      )}
+                      <SignaturePad onChange={setDispensingSignature} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="result-actions" style={{ justifyContent: 'space-between', marginTop: 16 }}>
+                  <Button icon={<ArrowLeftOutlined />} onClick={onClose}>Back to Queue</Button>
+                  <div className="result-actions" style={{ marginTop: 0 }}>
+                    <Button icon={<SaveOutlined />} loading={submitting} onClick={savePharmacyDraft}>Save Draft</Button>
+                    <Button icon={<PrinterOutlined />} onClick={printDispensedLabels}>Dispense &amp; Print Label</Button>
+                    <Button type="primary" icon={<CheckOutlined />} loading={submitting} onClick={submitPharmacy}>Complete Dispensing</Button>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {deptCode === 'PHARM' && !isPharmForm && (
               <>
                 <Divider orientation="left" plain>Diagnosis &amp; Treatment (reference)</Divider>
                 <Descriptions column={1} size="small" bordered style={{ marginBottom: 16 }}>
@@ -1331,6 +1599,7 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
                         { title: 'Frequency', render: (_, med) => medicationDetails[med.id]?.frequency || '—' },
                         { title: 'Duration', render: (_, med) => medicationDetails[med.id]?.duration || '—' },
                         { title: 'Quantity', render: (_, med) => medicationDetails[med.id]?.quantity || 1 },
+                        { title: 'Status', render: (_, med) => (dispensedQty[med.id] ? <Tag color="green">Dispensed ({dispensedQty[med.id]})</Tag> : <Tag color="gold">Pending</Tag>) },
                       ]}
                     />
                     {record.prescription_notes && (
@@ -1344,6 +1613,13 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
                       </Descriptions>
                     )}
                   </div>
+                )}
+
+                {record.dispensing_signature && (
+                  <>
+                    <Divider orientation="left" plain>Patient Signature</Divider>
+                    <img src={record.dispensing_signature} alt="Patient signature" style={{ maxWidth: '100%', maxHeight: 100, border: '1px solid #d0d9e8', borderRadius: 6, background: '#fff', marginBottom: 12 }} />
+                  </>
                 )}
 
                 <Divider orientation="left" plain>Dispensing Notes</Divider>

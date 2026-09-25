@@ -37,6 +37,7 @@ class ClinicalRecordController extends Controller
         'treatment_plan' => 'Doctor',
         'prescribed_medications_other' => 'Doctor',
         'prescription_notes' => 'Doctor',
+        'dispensing_signature' => 'Pharmacy Staff',
         'patient_signature_name' => 'Doctor',
         'patient_signature_phone' => 'Doctor',
         'follow_up_date' => 'Doctor',
@@ -85,6 +86,7 @@ class ClinicalRecordController extends Controller
             'treatment_plan' => ['sometimes', 'nullable', 'string', 'max:4000'],
             'prescribed_medications_other' => ['sometimes', 'nullable', 'string', 'max:2000'],
             'prescription_notes' => ['sometimes', 'nullable', 'string', 'max:2000'],
+            'dispensing_signature' => ['sometimes', 'nullable', 'string', 'max:600000'],
             'patient_signature_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'patient_signature_phone' => ['sometimes', 'nullable', 'string', 'max:255'],
             'follow_up_date' => ['sometimes', 'nullable', 'date'],
@@ -109,6 +111,11 @@ class ClinicalRecordController extends Controller
             && filled($updates['patient_signature_phone'])
         ) {
             $updates['signed_at'] = now();
+        }
+
+        // Same trigger idea as the doctor's signature above: signed the moment a signature is actually stored.
+        if (array_key_exists('dispensing_signature', $updates)) {
+            $updates['dispensing_signed_at'] = filled($updates['dispensing_signature']) ? now() : null;
         }
 
         $record->update($updates);

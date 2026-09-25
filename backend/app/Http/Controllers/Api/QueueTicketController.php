@@ -58,6 +58,12 @@ class QueueTicketController extends Controller
             $this->attachLabExtras($tickets->getCollection());
         }
 
+        // Pharmacy: who prescribed (the doctor who saw the patient in the
+        // preceding Consultation), shown on the dispensing form.
+        if ($departmentId && Department::find($departmentId)?->dept_code === 'PHARM') {
+            $this->attachPrescribingDoctor($tickets->getCollection());
+        }
+
         return response()->json($tickets);
     }
 
@@ -95,6 +101,29 @@ class QueueTicketController extends Controller
 
             $ticket->requested_test_names = $originServiceId ? ($testNamesByServiceId->get($originServiceId) ?: null) : null;
             $ticket->referring_doctor = $originTicketId ? $doctorNameByTicketId->get($originTicketId) : null;
+        }
+    }
+
+    /** Sets `referring_doctor` on each Pharmacy ticket whose previous stop was a Consultation. */
+    private function attachPrescribingDoctor($pharmTickets): void
+    {
+        $consultationTicketIds = $pharmTickets
+            ->filter(fn ($t) => $t->service?->previousService?->department?->dept_code === 'CONS')
+            ->pluck('service.previousService.queueTicket.id')
+            ->filter()
+            ->values();
+
+        $doctorNameByTicketId = QueueEvent::whereIn('queue_ticket_id', $consultationTicketIds)
+            ->where('event_type', 'CALLED')
+            ->with('performedBy:id,name')
+            ->orderByDesc('event_time')
+            ->get()
+            ->unique('queue_ticket_id')
+            ->mapWithKeys(fn ($event) => [$event->queue_ticket_id => $event->performedBy?->name]);
+
+        foreach ($pharmTickets as $ticket) {
+            $consultationTicketId = $ticket->service?->previousService?->queueTicket?->id;
+            $ticket->referring_doctor = $consultationTicketId ? $doctorNameByTicketId->get($consultationTicketId) : null;
         }
     }
 

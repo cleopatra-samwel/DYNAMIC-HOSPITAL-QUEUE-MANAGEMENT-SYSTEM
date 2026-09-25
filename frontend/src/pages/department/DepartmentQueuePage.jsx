@@ -49,7 +49,7 @@ const ACTION_LABELS = {
  * it and keeps the 5-button row above. Options:
  *   - 'call-and-secondary' (Doctor): "Call" while waiting, then "Called" +
  *     a second button (`secondaryActionLabel`, e.g. "Consult") once called.
- *   - 'call-only' (Laboratory's "Queue" sidebar item): "Call" while
+ *   - 'call-only' (Laboratory's / Pharmacy's "Queue" sidebar item): "Call" while
  *     waiting, then a disabled "Called" label — no further action here,
  *     the actual work happens on the "Perform Test" page instead.
  *   - 'review-only' (Laboratory's "Perform Test" sidebar item): no Call
@@ -177,7 +177,8 @@ export default function DepartmentQueuePage({ deptCode, showPaymentStatus = fals
     try {
       const { data } = await apiClient.patch(`/queue-tickets/${ticket.id}/start-service`);
       refresh();
-      setViewingTicket(data.ticket);
+      // The response has no per-department extras (e.g. referring_doctor), so keep the row's own.
+      setViewingTicket({ ...ticket, ...data.ticket });
     } catch (error) {
       message.error(error.response?.data?.message || 'Could not open the consultation for this ticket.');
     } finally {
@@ -268,7 +269,11 @@ export default function DepartmentQueuePage({ deptCode, showPaymentStatus = fals
         }
         if (actionMode === 'call-only') {
           if (['WAITING', 'ON_HOLD'].includes(ticket.status)) {
-            return <Button size="small" loading={busy} onClick={() => runAction(ticket, 'call')}>Call</Button>;
+            return (
+              <Tooltip title={awaitingPayment ? 'Waiting for payment at the cashier' : ''}>
+                <Button size="small" disabled={awaitingPayment} loading={busy} onClick={() => runAction(ticket, 'call')}>Call</Button>
+              </Tooltip>
+            );
           }
           if (['CALLED', 'IN_SERVICE'].includes(ticket.status)) {
             return <Button size="small" disabled>Called</Button>;

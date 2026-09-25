@@ -186,6 +186,9 @@ class MultiDepartmentFlowTest extends TestCase
             ->assertStatus(200)->assertJsonPath('ticket.status', 'IN_SERVICE');
         $this->assertSame('IN_PHARM', Visit::find($visitId)->overall_status);
 
+        // The patient signs to confirm receiving their medicines before dispensing can be completed.
+        $this->actingAs($this->pharmacyStaff)->patchJson("/api/visits/{$visitId}/clinical-record", ['dispensing_signature' => 'data:image/png;base64,iVBORw0KGgo='])->assertStatus(200);
+
         $this->actingAs($this->pharmacyStaff)->patchJson("/api/queue-tickets/{$pharmTicketId}/complete", ['notes' => 'Dispensed.'])
             ->assertStatus(200)->assertJsonPath('ticket.status', 'COMPLETED');
         $this->assertNotSame('COMPLETED', Visit::find($visitId)->overall_status, 'Ticket completion alone must not close the visit.');

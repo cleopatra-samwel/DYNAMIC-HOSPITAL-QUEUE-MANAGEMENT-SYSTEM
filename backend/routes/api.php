@@ -130,6 +130,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Service::pharmacyRequestOriginService).
     Route::get('/services/{service}/prescribed-medications', [PrescribedMedicationController::class, 'index']);
     Route::put('/services/{service}/prescribed-medications', [PrescribedMedicationController::class, 'update']);
+    Route::put('/services/{service}/prescribed-medications/dispensing', [PrescribedMedicationController::class, 'dispense']);
 
     Route::get('/referrals', [ReferralController::class, 'index']);
     Route::get('/referrals/{referral}', [ReferralController::class, 'show']);

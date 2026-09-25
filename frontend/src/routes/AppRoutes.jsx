@@ -33,6 +33,7 @@ import LaboratoryQueuePage from '../pages/department/LaboratoryQueuePage';
 import LaboratoryPerformTestPage from '../pages/department/LaboratoryPerformTestPage';
 import PharmacyDashboardPage from '../pages/department/PharmacyDashboardPage';
 import PharmacyQueuePage from '../pages/department/PharmacyQueuePage';
+import PharmacyDispensingPage from '../pages/department/PharmacyDispensingPage';
 import ProtectedRoute from './protectedRoutes';
 import { dashboardPathForRoles } from './roles';
 
@@ -110,6 +111,7 @@ const LABORATORY_MENU_ITEMS = [
 const PHARMACY_MENU_ITEMS = [
   { key: 'dashboard', label: 'Dashboard', icon: <DashboardOutlined />, path: '/pharmacy/dashboard', breadcrumb: ['Pharmacy', 'Dashboard'] },
   { key: 'queue', label: 'Pharmacy Queue', icon: <MedicineBoxOutlined />, path: '/pharmacy/queue', breadcrumb: ['Pharmacy', 'Queue'] },
+  { key: 'dispensing', label: 'Dispensing', icon: <ExperimentOutlined />, path: '/pharmacy/dispensing', breadcrumb: ['Pharmacy', 'Dispensing'] },
   { key: 'notifications', label: 'Notification', icon: <BellOutlined />, path: '/pharmacy/notifications', breadcrumb: ['Pharmacy', 'Notification'] },
 ];
 
@@ -190,6 +192,7 @@ export default function AppRoutes() {
         <Route element={<DashboardLayout menuItems={PHARMACY_MENU_ITEMS} />}>
           <Route path="/pharmacy/dashboard" element={<PharmacyDashboardPage />} />
           <Route path="/pharmacy/queue" element={<PharmacyQueuePage />} />
+          <Route path="/pharmacy/dispensing" element={<PharmacyDispensingPage />} />
           <Route path="/pharmacy/notifications" element={<NotificationPage />} />
         </Route>
       </Route>

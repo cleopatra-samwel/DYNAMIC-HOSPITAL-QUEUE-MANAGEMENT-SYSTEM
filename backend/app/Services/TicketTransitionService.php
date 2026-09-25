@@ -88,6 +88,16 @@ class TicketTransitionService
                 );
             }
 
+            // Pharmacy: the patient signs to confirm they received their
+            // medicines before dispensing can be completed.
+            if ($rule['to'] === 'COMPLETED' && $queueTicket->service->department->dept_code === 'PHARM') {
+                abort_unless(
+                    filled($visit->clinicalRecord?->dispensing_signature),
+                    422,
+                    'The patient must sign to confirm receiving their medicines before dispensing can be completed.'
+                );
+            }
+
             if ($rule['to'] === 'IN_SERVICE') {
                 $alreadyActive = QueueTicket::query()
                     ->whereHas('service', fn ($q) => $q->where('visit_id', $visit->id))

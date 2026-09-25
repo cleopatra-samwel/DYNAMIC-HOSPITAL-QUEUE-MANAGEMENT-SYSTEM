@@ -29,9 +29,58 @@ class PrescribedMedicationController extends Controller
 
         return response()->json([
             'medication_catalog_ids' => $origin->prescribedMedications()->pluck('medication_catalog_id'),
-            'medications' => $origin->prescribedMedications()->get(['medication_catalog_id', 'dosage', 'frequency', 'duration', 'quantity']),
+            'medications' => $origin->prescribedMedications()->get(['medication_catalog_id', 'dosage', 'frequency', 'duration', 'quantity', 'dispensed_quantity', 'dispensed_at']),
             'other' => $origin->visit->clinicalRecord?->prescribed_medications_other,
             'notes' => $origin->visit->clinicalRecord?->prescription_notes,
+        ]);
+    }
+
+    /**
+     * Pharmacy Staff-only, on the Pharmacy service: marks which prescribed
+     * medicines were actually handed over and how many. A null / 0
+     * dispensed_quantity un-marks a medicine. Only rows of THIS service's
+     * own prescription (resolved via pharmacyRequestOriginService) can be
+     * touched.
+     */
+    public function dispense(Request $request, Service $service)
+    {
+        abort_unless(
+            $request->user()->hasAnyRole(['Pharmacy Staff', 'Administrator']),
+            403,
+            'Only Pharmacy Staff may record dispensing.'
+        );
+
+        $service->loadMissing('department');
+        abort_unless(
+            $service->department?->dept_code === 'PHARM',
+            422,
+            'Dispensing can only be recorded on a Pharmacy service.'
+        );
+
+        $data = $request->validate([
+            'items' => ['present', 'array'],
+            'items.*.medication_catalog_id' => ['required', 'integer'],
+            'items.*.dispensed_quantity' => ['nullable', 'integer', 'min:0', 'max:100000'],
+        ]);
+
+        $origin = $service->pharmacyRequestOriginService();
+        $rows = $origin->prescribedMedications()->get()->keyBy('medication_catalog_id');
+
+        DB::transaction(function () use ($data, $rows) {
+            foreach ($data['items'] as $item) {
+                $row = $rows->get($item['medication_catalog_id']);
+                abort_unless($row, 422, 'One or more medicines are not part of this prescription.');
+
+                $quantity = $item['dispensed_quantity'] ?? null;
+                $row->update([
+                    'dispensed_quantity' => $quantity ?: null,
+                    'dispensed_at' => $quantity ? now() : null,
+                ]);
+            }
+        });
+
+        return response()->json([
+            'medications' => $origin->prescribedMedications()->get(['medication_catalog_id', 'dosage', 'frequency', 'duration', 'quantity', 'dispensed_quantity', 'dispensed_at']),
         ]);
     }
 
