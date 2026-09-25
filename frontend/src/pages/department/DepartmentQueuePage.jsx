@@ -279,7 +279,10 @@ export default function DepartmentQueuePage({ deptCode, showPaymentStatus = fals
             return <Button size="small" disabled>Called</Button>;
           }
           if (ticket.status === 'COMPLETED') {
-            return <Button size="small" onClick={() => setViewingTicket(ticket)}>View</Button>;
+            // Pharmacy's queue is Call-only: once served it just stays "Called" (the dispensing record is on the Dispensing page).
+            return deptCode === 'PHARM'
+              ? <Button size="small" disabled>Called</Button>
+              : <Button size="small" onClick={() => setViewingTicket(ticket)}>View</Button>;
           }
           return <span style={{ color: '#8c8c8c' }}>—</span>;
         }
