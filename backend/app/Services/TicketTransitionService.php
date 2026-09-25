@@ -78,6 +78,16 @@ class TicketTransitionService
                 "Cannot move ticket {$queueTicket->queue_number} from {$locked->status} to {$rule['to']}."
             );
 
+            // Billable departments (Pharmacy) may only call a patient whose
+            // payment has been verified — pay first, then be called.
+            if ($rule['to'] === 'CALLED' && PaymentGate::requiresPayment($queueTicket->service->department->dept_code)) {
+                abort_unless(
+                    PaymentGate::passes($queueTicket->service),
+                    402,
+                    'Payment must be verified by Cashier/Billing Staff before this patient can be called.'
+                );
+            }
+
             if ($rule['to'] === 'IN_SERVICE') {
                 $alreadyActive = QueueTicket::query()
                     ->whereHas('service', fn ($q) => $q->where('visit_id', $visit->id))

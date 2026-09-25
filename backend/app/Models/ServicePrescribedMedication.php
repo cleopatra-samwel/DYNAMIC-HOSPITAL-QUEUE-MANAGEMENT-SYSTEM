@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /** One row per checkbox a Doctor ticks on the medication prescription checklist — see PrescribedMedicationController. */
-#[Fillable(['service_id', 'medication_catalog_id'])]
+#[Fillable(['service_id', 'medication_catalog_id', 'dosage', 'frequency', 'duration', 'quantity'])]
 class ServicePrescribedMedication extends Model
 {
     protected $table = 'service_prescribed_medications';

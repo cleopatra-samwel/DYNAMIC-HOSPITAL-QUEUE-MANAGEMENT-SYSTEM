@@ -21,7 +21,7 @@ export default function LaboratoryQueuePage() {
   return (
     <>
       <NowServingBanner deptCode="LAB" />
-      <DepartmentQueuePage deptCode="LAB" showPaymentStatus extraColumns={LAB_EXTRA_COLUMNS} actionMode="call-only" />
+      <DepartmentQueuePage deptCode="LAB" extraColumns={LAB_EXTRA_COLUMNS} actionMode="call-only" />
     </>
   );
 }

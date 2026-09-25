@@ -19,7 +19,7 @@ export default function LaboratoryPerformTestPage() {
   return (
     <>
       <NowServingBanner deptCode="LAB" />
-      <DepartmentQueuePage deptCode="LAB" showPaymentStatus extraColumns={LAB_EXTRA_COLUMNS} actionMode="review-only" secondaryActionLabel="Review" />
+      <DepartmentQueuePage deptCode="LAB" extraColumns={LAB_EXTRA_COLUMNS} actionMode="review-only" secondaryActionLabel="Review" />
     </>
   );
 }

@@ -18,6 +18,7 @@ export default function PendingPaymentsPage() {
   const [billableDeptIds, setBillableDeptIds] = useState([]);
   const [labTests, setLabTests] = useState([]);
   const [medications, setMedications] = useState([]);
+  const [catalogsLoaded, setCatalogsLoaded] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const autoOpenedRef = useRef(false);
@@ -37,8 +38,10 @@ export default function PendingPaymentsPage() {
     apiClient.get('/departments').then(({ data }) => {
       setBillableDeptIds(data.departments.filter((d) => BILLABLE_DEPT_CODES.includes(d.dept_code)).map((d) => d.id));
     }).catch(() => {});
-    apiClient.get('/lab-test-catalog').then(({ data }) => setLabTests(data.lab_tests.filter((t) => t.active))).catch(() => {});
-    apiClient.get('/medication-catalog').then(({ data }) => setMedications(data.medications.filter((m) => m.active))).catch(() => {});
+    Promise.allSettled([
+      apiClient.get('/lab-test-catalog').then(({ data }) => setLabTests(data.lab_tests.filter((t) => t.active))),
+      apiClient.get('/medication-catalog').then(({ data }) => setMedications(data.medications.filter((m) => m.active))),
+    ]).then(() => setCatalogsLoaded(true));
   }, []);
 
   // Someone else verifying a payment (another Billing device, or a second
@@ -70,12 +73,11 @@ export default function PendingPaymentsPage() {
     const row = rows.find((r) => r.service_id === serviceId);
     if (!row) return;
 
-    const catalogReady = row.dept_code === 'LAB' ? labTests.length > 0 : row.dept_code === 'PHARM' ? medications.length > 0 : true;
-    if (!catalogReady) return;
+    if (!catalogsLoaded) return;
 
     autoOpenedRef.current = true;
     setTarget(row);
-  }, [rows, loading, labTests, medications, location.state]);
+  }, [rows, loading, catalogsLoaded, location.state]);
 
   // Called by the billing form: refresh the list if a payment went through,
   // and optionally go back to the Billing Queue.

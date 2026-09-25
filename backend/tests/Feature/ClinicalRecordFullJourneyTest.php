@@ -137,13 +137,6 @@ class ClinicalRecordFullJourneyTest extends TestCase
             ->assertJsonPath('lab_test_catalog_ids', [$fbc->id])
             ->assertJsonPath('other', 'Malaria test (MRDT).');
 
-        // Billing's pending-payments listing pre-selects the same checklist
-        // — the Lab service itself is still awaiting payment at this point.
-        $pendingRes = $this->actingAs($this->billingStaff)->getJson('/api/payments/pending')->assertStatus(200);
-        $labRow = collect($pendingRes->json('pending'))->firstWhere('service_id', $labServiceId);
-        $this->assertSame([$fbc->id], $labRow['requested_test_catalog_ids']);
-        $this->assertSame('Malaria test (MRDT).', $labRow['requested_tests_other']);
-
         // 3. Laboratory: call + start, record results.
         $this->verifyPaymentFor(Service::find($labServiceId));
         $this->actingAs($this->labStaff)->patchJson("/api/queue-tickets/{$labTicketId}/call")->assertStatus(200);
@@ -211,6 +204,13 @@ class ClinicalRecordFullJourneyTest extends TestCase
         $this->assertSame('Journey Patient', $record->patient_signature_name);
         $this->assertSame('0700123456', $record->patient_signature_phone);
         $this->assertNotNull($record->signed_at);
+
+        // Payment is taken once, before Pharmacy — Billing's pending list for
+        // the Pharmacy service carries the tests done earlier in the visit.
+        $pharmServiceId = $pharmServiceRes->json('service.id');
+        $pendingRes = $this->actingAs($this->billingStaff)->getJson('/api/payments/pending')->assertStatus(200);
+        $pharmRow = collect($pendingRes->json('pending'))->firstWhere('service_id', $pharmServiceId);
+        $this->assertSame([$fbc->id], $pharmRow['requested_test_catalog_ids']);
 
         // The pharmacy service really did get created, closing the loop.
         $this->assertSame('Pharmacy', $pharmServiceRes->json('service.department.dept_name'));

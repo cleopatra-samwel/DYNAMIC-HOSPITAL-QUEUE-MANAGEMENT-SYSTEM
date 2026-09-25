@@ -20,7 +20,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'doctor_symptoms_notes', 'doctor_preliminary_diagnosis', 'requested_tests_other', 'referral_target',
     'temperature', 'blood_pressure', 'weight', 'pulse_rate',
     'lab_results_notes', 'lab_technician_id',
-    'final_diagnosis', 'treatment_plan', 'prescribed_medications_other', 'patient_signature_name', 'patient_signature_phone', 'signed_at',
+    'final_diagnosis', 'treatment_plan', 'prescribed_medications_other', 'prescription_notes', 'patient_signature_name', 'patient_signature_phone', 'signed_at',
     'follow_up_date', 'follow_up_instructions',
 ])]
 class ClinicalRecord extends Model

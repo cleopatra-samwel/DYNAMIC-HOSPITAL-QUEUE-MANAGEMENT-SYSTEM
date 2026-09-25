@@ -147,11 +147,17 @@ class PaymentController extends Controller
                 }
 
                 $prescribedMedicationCatalogIds = [];
+                $prescribedMedications = [];
                 $prescribedMedicationsOther = null;
                 if ($service->department?->dept_code === 'PHARM') {
                     $origin = $service->pharmacyRequestOriginService();
                     $prescribedMedicationCatalogIds = $origin->prescribedMedications()->pluck('medication_catalog_id')->all();
+                    $prescribedMedications = $origin->prescribedMedications()->get(['medication_catalog_id', 'dosage', 'frequency', 'duration', 'quantity'])->all();
                     $prescribedMedicationsOther = $origin->visit?->clinicalRecord?->prescribed_medications_other;
+
+                    // Payment is taken once, before Pharmacy — so the tests the
+                    // patient had done earlier in the visit are charged here too.
+                    $requestedTestCatalogIds = $origin->labRequestOriginService()->requestedTests()->pluck('lab_test_catalog_id')->all();
                 }
 
                 // The Consultation service this payment traces back to — the
@@ -187,6 +193,7 @@ class PaymentController extends Controller
                     'requested_test_catalog_ids' => $requestedTestCatalogIds,
                     'requested_tests_other' => $service->visit?->clinicalRecord?->requested_tests_other,
                     'prescribed_medication_catalog_ids' => $prescribedMedicationCatalogIds,
+                    'prescribed_medications' => $prescribedMedications,
                     'prescribed_medications_other' => $prescribedMedicationsOther,
                     'final_diagnosis' => $service->visit?->clinicalRecord?->final_diagnosis,
                     'treatment_plan' => $service->visit?->clinicalRecord?->treatment_plan,

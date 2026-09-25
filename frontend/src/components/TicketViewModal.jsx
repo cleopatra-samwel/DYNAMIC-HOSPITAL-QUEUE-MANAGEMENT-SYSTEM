@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { Alert, Button, Card, Checkbox, DatePicker, Descriptions, Divider, Form, Input, InputNumber, Modal, Radio, Select, Spin, Table, Tabs, Tag, Typography, message } from 'antd';
-import { ArrowLeftOutlined, CheckOutlined, EditOutlined, ExperimentOutlined, HeartOutlined, InfoCircleOutlined, MedicineBoxOutlined, ReloadOutlined, SaveOutlined, SendOutlined, UserOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, CheckCircleOutlined, CheckOutlined, DeleteOutlined, EditOutlined, ExperimentOutlined, HeartOutlined, InfoCircleOutlined, MedicineBoxOutlined, ReloadOutlined, SaveOutlined, SendOutlined, TeamOutlined, UserOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import apiClient from '../services/apiClient';
 import { formatStatusLabel } from '../utils/formatLabel';
@@ -42,6 +42,35 @@ const LAB_RESULT_COLUMNS = [
   { title: 'Status', dataIndex: 'status', render: (v) => (v ? <Tag color={LAB_RESULT_STATUS_COLORS[v]}>{v}</Tag> : '—') },
 ];
 
+/** Big selectable tiles for "Forward Patient To" — a controlled Form.Item input (value = chosen key). */
+function ForwardTiles({ value, onChange, options }) {
+  return (
+    <div className="forward-tiles">
+      {options.map((option) => (
+        <button type="button" key={option.key} className={`forward-tile${value === option.key ? ' is-selected' : ''}`} onClick={() => onChange?.(option.key)}>
+          {option.icon}
+          <strong>{option.title}</strong>
+          <span>{option.subtitle}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const RESULT_FORWARD_OPTIONS = [
+  { key: 'pharmacy', title: 'Pharmacy', subtitle: 'For prescribed medicines', icon: <MedicineBoxOutlined /> },
+  { key: 'refer', title: 'Another Department', subtitle: 'Select department', icon: <TeamOutlined /> },
+  { key: 'followup', title: 'Follow-up', subtitle: 'Review on a set date', icon: <ReloadOutlined /> },
+  { key: 'none', title: 'Complete Consultation', subtitle: 'No further action', icon: <CheckCircleOutlined /> },
+];
+
+const FORWARD_BUTTON_LABELS = {
+  pharmacy: 'Forward to Pharmacy',
+  refer: 'Refer Patient',
+  followup: 'Schedule Follow-up',
+  none: 'Complete Consultation',
+};
+
 /**
  * Unified "View" entry point (Structured Laboratory Request Form's
  * follow-up project) — one modal, opened from a single "View" button on
@@ -78,6 +107,7 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
   const currentUserName = useSelector((state) => state.auth.user?.name);
   const liveFinalDiagnosis = Form.useWatch('final_diagnosis', form);
   const livePreliminaryDiagnosis = Form.useWatch('doctor_preliminary_diagnosis', form);
+  const forwardChoice = Form.useWatch('referral_target', form);
 
   // Doctor + Registration share these (target department / doctor pick).
   const [departments, setDepartments] = useState([]);
@@ -109,6 +139,8 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
   const [medicationCatalog, setMedicationCatalog] = useState([]);
   const [selectedMedicationIds, setSelectedMedicationIds] = useState([]);
   const [medicationOtherText, setMedicationOtherText] = useState('');
+  // Per-medicine dosage / frequency / duration / quantity, keyed by medication_catalog_id.
+  const [medicationDetails, setMedicationDetails] = useState({});
 
   // Pharmacy's own free-text note — services.notes, not a clinical_records field.
   const [dispensingNotes, setDispensingNotes] = useState('');
@@ -204,6 +236,9 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
       .then(({ data }) => {
         setSelectedMedicationIds(data.medication_catalog_ids);
         setMedicationOtherText(data.other || '');
+        setMedicationDetails(Object.fromEntries((data.medications || []).map((m) => [m.medication_catalog_id, {
+          dosage: m.dosage, frequency: m.frequency, duration: m.duration, quantity: m.quantity,
+        }])));
       })
       .catch(() => {});
   }, [open, serviceId, deptCode]);
@@ -238,7 +273,21 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
 
   const toggleMedication = (id, checked) => {
     setSelectedMedicationIds((prev) => (checked ? [...prev, id] : prev.filter((m) => m !== id)));
+    if (checked) setMedicationDetails((prev) => ({ ...prev, [id]: prev[id] || { quantity: 1 } }));
   };
+
+  const updateMedicationDetail = (id, field, value) => {
+    setMedicationDetails((prev) => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
+  };
+
+  // What goes to PUT /prescribed-medications — one entry per selected medicine, with its details.
+  const medicationPayload = () => selectedMedicationIds.map((id) => ({
+    id,
+    dosage: medicationDetails[id]?.dosage || null,
+    frequency: medicationDetails[id]?.frequency || null,
+    duration: medicationDetails[id]?.duration || null,
+    quantity: medicationDetails[id]?.quantity || 1,
+  }));
 
   const selectedMedications = medicationCatalog.filter((m) => selectedMedicationIds.includes(m.id));
 
@@ -259,6 +308,8 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
   // Vitals/Consultation/Request Laboratory must stay editable there
   // regardless of prior lab history.
   const isResultReview = secondaryActionLabel === 'Result';
+  // The redesigned "Laboratory Results - Return to Doctor" form: only while the doctor is actively reviewing returned results.
+  const isResultForm = deptCode === 'CONS' && isInService && isResultReview;
 
   const runQuickAction = async (action) => {
     setQuickActing(true);
@@ -346,8 +397,10 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
         other: otherText || null,
       });
       await apiClient.put(`/services/${serviceId}/prescribed-medications`, {
-        medication_catalog_ids: selectedMedicationIds,
+        medications: medicationPayload(),
         other: medicationOtherText || null,
+        // Only the Result form has prescription notes; leaving this out keeps the saved notes untouched.
+        notes: form.getFieldValue('prescription_notes'),
       });
 
       if (values.referral_target === 'laboratory') {
@@ -370,8 +423,30 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
       onChanged?.();
       onClose();
     } catch (err) {
-      if (err?.errorFields) return;
+      if (err?.errorFields) {
+        message.warning('Please complete the required fields (including where the patient is going).');
+        return;
+      }
       message.error(err.response?.data?.message || 'Could not save and forward.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Result form: keep what the doctor has typed so far without forwarding the patient.
+  const saveDraft = async () => {
+    setSubmitting(true);
+    try {
+      const values = form.getFieldsValue(['final_diagnosis', 'treatment_plan', 'patient_signature_name', 'patient_signature_phone']);
+      await apiClient.patch(`/visits/${visitId}/clinical-record`, Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined)));
+      await apiClient.put(`/services/${serviceId}/prescribed-medications`, {
+        medications: medicationPayload(),
+        other: medicationOtherText || null,
+        notes: form.getFieldValue('prescription_notes'),
+      });
+      message.success('Draft saved.');
+    } catch (err) {
+      message.error(err.response?.data?.message || 'Could not save the draft.');
     } finally {
       setSubmitting(false);
     }
@@ -525,7 +600,16 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
 
   return (
     <Modal
-      title={deptCode === 'LAB' ? (
+      title={isResultForm ? (
+        <div className="billing-title">
+          <span className="billing-title__icon"><ExperimentOutlined /></span>
+          <div>
+            <div className="billing-title__main">Laboratory Results – Return to Doctor</div>
+            <div className="billing-title__sub">View patient laboratory results, add diagnosis, prescription and forward to next department.</div>
+          </div>
+          <Tag color="green" style={{ marginLeft: 'auto', marginRight: 24 }}>Results Received · {dayjs(ticket?.created_at).format('DD MMM YYYY HH:mm')}</Tag>
+        </div>
+      ) : deptCode === 'LAB' ? (
         <div className="billing-title">
           <span className="billing-title__icon"><ExperimentOutlined /></span>
           <div>
@@ -544,8 +628,8 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
       ) : `${deptCode === 'REG' ? 'Register Patient' : 'View'} — ${ticket?.queue_number || ''}`}
       open={open}
       onCancel={onClose}
-      footer={footer}
-      width={deptCode === 'CONS' ? 960 : deptCode === 'LAB' ? 1000 : 680}
+      footer={isResultForm ? null : footer}
+      width={isResultForm ? 1120 : deptCode === 'CONS' ? 960 : deptCode === 'LAB' ? 1000 : 680}
       destroyOnHidden
     >
       {loading ? <Spin /> : error ? <Alert type="error" showIcon message={error} /> : record && (
@@ -624,7 +708,7 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
               )
             )}
 
-            {deptCode === 'CONS' && (
+            {deptCode === 'CONS' && !isResultForm && (
               <div className="billing-grid">
                 <div>
                   {consultInfo}
@@ -874,6 +958,165 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
               </div>
             )}
 
+            {isResultForm && (
+              <div className="billing-grid" style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)' }}>
+                <div>
+                  <div className="billing-info">
+                    <div className="billing-info__patient">
+                      <span className="billing-avatar"><UserOutlined /></span>
+                      <div>
+                        <div className="billing-label">Patient Name</div>
+                        <div className="billing-strong">{patient?.name || '—'}</div>
+                        <div className="billing-small">Patient ID: {patient?.patient_number || '—'}</div>
+                        <div className="billing-small">Age: {ageFromDob(patient?.date_of_birth) ?? '—'} &nbsp;|&nbsp; Gender: {patient?.gender || '—'}</div>
+                      </div>
+                    </div>
+                    <div className="billing-info__diagnosis">
+                      <div>
+                        <div className="billing-small"><strong>Queue No:</strong> {ticket?.queue_number}</div>
+                        <div className="billing-small"><strong>Department:</strong> {ticket?.service?.department?.dept_name || '—'}</div>
+                        <div className="billing-small"><strong>Referred From:</strong> {ticket?.service?.previousService?.department?.dept_name || '—'}</div>
+                        <div className="billing-small"><strong>Visit Date:</strong> {dayjs(ticket?.service?.visit?.visit_date || ticket?.created_at).format('DD MMM YYYY')}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <h4 className="billing-section"><ExperimentOutlined /> Laboratory Results</h4>
+                  <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>Tests ordered by the doctor and results from the laboratory.</Text>
+                  <Table
+                    rowKey="id"
+                    size="small"
+                    pagination={false}
+                    dataSource={labTestRows}
+                    locale={{ emptyText: 'No specific tests were requested.' }}
+                    columns={[
+                      { title: '#', width: 48, render: (_, __, index) => index + 1 },
+                      { title: 'Test Name', render: (_, row) => <div><strong>{row.name}</strong><div className="billing-small">{row.category}</div></div> },
+                      { title: 'Result', dataIndex: 'result_value', render: (v) => v || '—' },
+                      { title: 'Reference Range', dataIndex: 'reference_range', render: (v) => v || '—' },
+                      { title: 'Status', dataIndex: 'status', render: (v) => (v ? <Tag color={LAB_RESULT_STATUS_COLORS[v]}>{v}</Tag> : '—') },
+                    ]}
+                  />
+                  {labTestRows.length > 0 && (
+                    labTestRows.every((row) => row.status === 'Normal')
+                      ? <Alert style={{ marginTop: 10 }} type="success" showIcon message="All results are within normal range. Continue with clinical correlation." />
+                      : labTestRows.some((row) => row.status === 'Abnormal' || row.status === 'Critical')
+                        ? <Alert style={{ marginTop: 10 }} type="warning" showIcon message="Some results are abnormal or critical. Review before prescribing." />
+                        : null
+                  )}
+                  {record.lab_results_notes && (
+                    <Descriptions column={1} size="small" bordered style={{ marginTop: 10 }}>
+                      <Descriptions.Item label="Laboratory Remarks">{record.lab_results_notes}</Descriptions.Item>
+                    </Descriptions>
+                  )}
+                </div>
+
+                <div>
+                  <Card size="small" title="Diagnosis (From Consultation)" style={{ marginBottom: 16 }}>
+                    <div className="billing-note" style={{ marginTop: 0, marginBottom: 12 }}>
+                      <div>
+                        <strong>{record.doctor_preliminary_diagnosis || 'No preliminary diagnosis recorded'}</strong>
+                        {record.doctor_symptoms_notes && <div className="billing-small">{record.doctor_symptoms_notes}</div>}
+                      </div>
+                    </div>
+                    <Form.Item label="Final Diagnosis" name="final_diagnosis" extra="Required before forwarding to Pharmacy." style={{ marginBottom: 0 }}>
+                      <TextArea rows={2} />
+                    </Form.Item>
+                  </Card>
+
+                  <Card
+                    size="small"
+                    title="Add / Update Prescription"
+                    style={{ marginBottom: 16 }}
+                    extra={(
+                      <Select
+                        showSearch
+                        value={null}
+                        placeholder="+ Add Medicine"
+                        style={{ width: 180 }}
+                        optionFilterProp="label"
+                        options={medicationCatalog.filter((med) => !selectedMedicationIds.includes(med.id)).map((med) => ({ label: med.name, value: med.id }))}
+                        onChange={(id) => id && toggleMedication(id, true)}
+                      />
+                    )}
+                  >
+                    <Table
+                      rowKey="id"
+                      size="small"
+                      pagination={false}
+                      dataSource={selectedMedications}
+                      locale={{ emptyText: 'No medicine added yet.' }}
+                      columns={[
+                        { title: '#', width: 40, render: (_, __, index) => index + 1 },
+                        { title: 'Medicine Name', dataIndex: 'name' },
+                        { title: 'Dosage', width: 96, render: (_, med) => <Input size="small" placeholder="e.g. 500 mg" value={medicationDetails[med.id]?.dosage || ''} onChange={(e) => updateMedicationDetail(med.id, 'dosage', e.target.value)} /> },
+                        { title: 'Frequency', width: 96, render: (_, med) => <Input size="small" placeholder="e.g. 2x daily" value={medicationDetails[med.id]?.frequency || ''} onChange={(e) => updateMedicationDetail(med.id, 'frequency', e.target.value)} /> },
+                        { title: 'Duration', width: 90, render: (_, med) => <Input size="small" placeholder="e.g. 3 days" value={medicationDetails[med.id]?.duration || ''} onChange={(e) => updateMedicationDetail(med.id, 'duration', e.target.value)} /> },
+                        { title: 'Qty', width: 76, render: (_, med) => <InputNumber size="small" min={1} style={{ width: 64 }} value={medicationDetails[med.id]?.quantity || 1} onChange={(value) => updateMedicationDetail(med.id, 'quantity', value || 1)} /> },
+                        { title: '', width: 40, render: (_, med) => <Button size="small" danger icon={<DeleteOutlined />} onClick={() => toggleMedication(med.id, false)} /> },
+                      ]}
+                    />
+                    <Input
+                      style={{ marginTop: 8 }}
+                      placeholder="Other medication not in the list (optional)"
+                      value={medicationOtherText}
+                      onChange={(e) => setMedicationOtherText(e.target.value)}
+                    />
+                    <Form.Item label="Prescription Notes (Optional)" name="prescription_notes" style={{ margin: '12px 0 0' }}>
+                      <TextArea rows={2} maxLength={500} showCount placeholder="e.g. Take medicines after food. If symptoms persist, return after 3 days." />
+                    </Form.Item>
+                  </Card>
+
+                  <Card size="small" title="Doctor's Recommendation" style={{ marginBottom: 16 }}>
+                    <Form.Item name="treatment_plan" extra="Required before forwarding to Pharmacy." style={{ marginBottom: 12 }}>
+                      <TextArea rows={2} maxLength={500} showCount placeholder="e.g. Patient is stable. Continue treatment and review if symptoms persist." />
+                    </Form.Item>
+                    <Form.Item label="Patient Signature — Name" name="patient_signature_name" style={{ marginBottom: 8 }}>
+                      <Input />
+                    </Form.Item>
+                    <Form.Item label="Patient Signature — Phone" name="patient_signature_phone" style={{ marginBottom: record.signed_at ? 8 : 0 }}>
+                      <Input />
+                    </Form.Item>
+                    {record.signed_at && <Text type="secondary">Signed at {new Date(record.signed_at).toLocaleString()}</Text>}
+                  </Card>
+
+                  <Card size="small" title="Forward Patient To">
+                    <Form.Item name="referral_target" rules={[{ required: true, message: 'Choose where the patient goes next' }]}>
+                      <ForwardTiles options={RESULT_FORWARD_OPTIONS} />
+                    </Form.Item>
+                    {forwardChoice === 'refer' && (
+                      <>
+                        <Form.Item label="Refer To Department" name="refer_department_id" rules={[{ required: true, message: 'Choose a department' }]}>
+                          <Select options={departments.filter((d) => d.dept_code !== 'REG' && d.dept_code !== 'CONS').map((d) => ({ label: d.dept_name, value: d.id }))} />
+                        </Form.Item>
+                        <Form.Item label="Reason for Referral" name="referral_reason" rules={[{ required: true, message: 'Reason is required' }]}>
+                          <TextArea rows={2} />
+                        </Form.Item>
+                        <Form.Item label="Additional Notes (optional)" name="referral_notes">
+                          <TextArea rows={2} />
+                        </Form.Item>
+                      </>
+                    )}
+                    {forwardChoice === 'followup' && (
+                      <>
+                        <Form.Item label="Follow-up Date" name="follow_up_date" rules={[{ required: true, message: 'Follow-up date is required' }]}>
+                          <DatePicker style={{ width: '100%' }} disabledDate={(current) => current && current < dayjs().startOf('day')} format="YYYY-MM-DD" />
+                        </Form.Item>
+                        <Form.Item label="Follow-up Instructions" name="follow_up_instructions" rules={[{ required: true, message: 'Instructions are required' }]}>
+                          <TextArea rows={2} />
+                        </Form.Item>
+                      </>
+                    )}
+                    <div className="result-actions">
+                      <Button icon={<SaveOutlined />} loading={submitting} onClick={saveDraft}>Save Draft</Button>
+                      <Button type="primary" icon={<SendOutlined />} loading={submitting} onClick={submitDoctor}>{FORWARD_BUTTON_LABELS[forwardChoice] || 'Forward'}</Button>
+                      <Button onClick={onClose}>Cancel</Button>
+                    </div>
+                  </Card>
+                </div>
+              </div>
+            )}
+
             {deptCode === 'LAB' && (
               <>
                 <div className="lab-top">
@@ -1076,9 +1319,25 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
                   <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>Not recorded</Text>
                 ) : (
                   <div style={{ marginBottom: 16 }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {selectedMedications.map((med) => <Checkbox key={med.id} checked disabled>{med.name}</Checkbox>)}
-                    </div>
+                    <Table
+                      rowKey="id"
+                      size="small"
+                      pagination={false}
+                      dataSource={selectedMedications}
+                      columns={[
+                        { title: '#', width: 40, render: (_, __, index) => index + 1 },
+                        { title: 'Medicine Name', dataIndex: 'name' },
+                        { title: 'Dosage', render: (_, med) => medicationDetails[med.id]?.dosage || '—' },
+                        { title: 'Frequency', render: (_, med) => medicationDetails[med.id]?.frequency || '—' },
+                        { title: 'Duration', render: (_, med) => medicationDetails[med.id]?.duration || '—' },
+                        { title: 'Quantity', render: (_, med) => medicationDetails[med.id]?.quantity || 1 },
+                      ]}
+                    />
+                    {record.prescription_notes && (
+                      <Descriptions column={1} size="small" bordered style={{ marginTop: 8 }}>
+                        <Descriptions.Item label="Prescription Notes">{record.prescription_notes}</Descriptions.Item>
+                      </Descriptions>
+                    )}
                     {medicationOtherText && (
                       <Descriptions column={1} size="small" bordered style={{ marginTop: 8 }}>
                         <Descriptions.Item label="Others">{medicationOtherText}</Descriptions.Item>

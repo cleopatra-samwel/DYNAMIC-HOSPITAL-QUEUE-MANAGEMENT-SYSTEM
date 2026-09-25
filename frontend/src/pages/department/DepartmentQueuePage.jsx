@@ -203,7 +203,7 @@ export default function DepartmentQueuePage({ deptCode, showPaymentStatus = fals
     ...(showPaymentStatus ? [{
       title: 'Payment Status',
       render: (_, t) => {
-        const status = t.service?.visit?.payment_status || 'Pending';
+        const status = t.service?.payment?.status === 'VERIFIED' ? 'Verified' : 'Pending';
         return <Tag color={status === 'Verified' ? 'green' : 'orange'}>{status}</Tag>;
       },
     }] : []),
@@ -225,9 +225,15 @@ export default function DepartmentQueuePage({ deptCode, showPaymentStatus = fals
             </Tooltip>
           );
         }
+        // Pharmacy may only call a patient who has already paid at the cashier.
+        const awaitingPayment = deptCode === 'PHARM' && ticket.service?.payment?.status !== 'VERIFIED';
         if (actionMode === 'call-and-secondary') {
           if (['WAITING', 'ON_HOLD'].includes(ticket.status)) {
-            return <Button size="small" loading={busy} onClick={() => runAction(ticket, 'call')}>Call</Button>;
+            return (
+              <Tooltip title={awaitingPayment ? 'Waiting for payment at the cashier' : ''}>
+                <Button size="small" disabled={awaitingPayment} loading={busy} onClick={() => runAction(ticket, 'call')}>Call</Button>
+              </Tooltip>
+            );
           }
           if (['CALLED', 'IN_SERVICE'].includes(ticket.status)) {
             return (
@@ -243,6 +249,10 @@ export default function DepartmentQueuePage({ deptCode, showPaymentStatus = fals
           return <span style={{ color: '#8c8c8c' }}>—</span>;
         }
         if (actionMode === 'call-and-pay') {
+          // Insured patients don't have to come to the counter — the cashier verifies the claim straight from the queue.
+          if (ticket.service?.visit?.payment_method === 'Insurance' && ['WAITING', 'ON_HOLD', 'CALLED'].includes(ticket.status)) {
+            return <Button size="small" type="primary" onClick={() => navigate('/billing/pending-payments', { state: { serviceId: ticket.service?.billing_for_service_id } })}>Verify Insurance</Button>;
+          }
           if (['WAITING', 'ON_HOLD'].includes(ticket.status)) {
             return <Button size="small" loading={busy} onClick={() => runAction(ticket, 'call')}>Call</Button>;
           }
@@ -279,7 +289,7 @@ export default function DepartmentQueuePage({ deptCode, showPaymentStatus = fals
         }
         return (
           <Space wrap>
-            <Button size="small" disabled={!['WAITING', 'ON_HOLD'].includes(ticket.status)} loading={busy} onClick={() => runAction(ticket, 'call')}>{ticket.status === 'CALLED' ? 'Called' : 'Call'}</Button>
+            <Button size="small" disabled={!['WAITING', 'ON_HOLD'].includes(ticket.status) || awaitingPayment} loading={busy} onClick={() => runAction(ticket, 'call')}>{ticket.status === 'CALLED' ? 'Called' : 'Call'}</Button>
             <Button size="small" disabled={ticket.status !== 'CALLED'} loading={busy} onClick={() => runAction(ticket, 'start-service')}>Start Service</Button>
             <Button size="small" type="primary" onClick={() => setViewingTicket(ticket)}>View</Button>
             <Button size="small" disabled={ticket.status !== 'CALLED'} loading={busy} onClick={() => runAction(ticket, 'no-show')}>Mark No-Show</Button>

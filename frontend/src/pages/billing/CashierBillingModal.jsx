@@ -10,7 +10,7 @@ import apiClient from '../../services/apiClient';
 const CURRENCY = 'TZS';
 const money = (value) => Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
 
-const SECTION_TITLES = { PHARM: 'Prescribed Medicines', LAB: 'Requested Tests', CONS: 'Consultation Charges' };
+const SECTION_TITLES = { PHARM: 'Tests Performed & Prescribed Medicines', LAB: 'Requested Tests', CONS: 'Consultation Charges' };
 const CATALOG_TYPES = { LAB: 'lab_test', PHARM: 'medication' };
 
 /** Same starting point as before the redesign: pre-select what the Doctor requested (Lab) or prescribed (Pharmacy). */
@@ -22,9 +22,18 @@ function initialItems(target, labTests, medications) {
       .map((t) => ({ key: `lab_test-${t.id}-${now}`, catalog_type: 'lab_test', catalog_item_id: t.id, custom_label: null, label: t.name, unit_price: Number(t.price), quantity: 1 }));
   }
   if (target.dept_code === 'PHARM') {
-    return medications
+    // Payment is taken once, before Pharmacy: the tests done earlier in the visit + every medicine the doctor prescribed.
+    const tests = labTests
+      .filter((t) => target.requested_test_catalog_ids?.includes(t.id))
+      .map((t) => ({ key: `lab_test-${t.id}-${now}`, catalog_type: 'lab_test', catalog_item_id: t.id, custom_label: null, label: t.name, detail: 'Laboratory test', unit_price: Number(t.price), quantity: 1 }));
+    const medicines = medications
       .filter((m) => target.prescribed_medication_catalog_ids?.includes(m.id))
-      .map((m) => ({ key: `medication-${m.id}-${now}`, catalog_type: 'medication', catalog_item_id: m.id, custom_label: null, label: m.name, unit_price: Number(m.price), quantity: 1 }));
+      .map((m) => {
+        const line = target.prescribed_medications?.find((p) => p.medication_catalog_id === m.id);
+        const detail = [line?.dosage, line?.frequency, line?.duration].filter(Boolean).join(' · ');
+        return { key: `medication-${m.id}-${now}`, catalog_type: 'medication', catalog_item_id: m.id, custom_label: null, label: m.name, detail: detail || 'Medicine', unit_price: Number(m.price), quantity: line?.quantity || 1 };
+      });
+    return [...tests, ...medicines];
   }
   return [];
 }
@@ -139,7 +148,7 @@ export default function CashierBillingModal({ target, labTests, medications, onC
 
   const columns = [
     { title: '#', width: 48, render: (_, __, index) => index + 1 },
-    { title: 'Item', dataIndex: 'label' },
+    { title: 'Item', render: (_, item) => <div><strong>{item.label}</strong>{item.detail && <div className="billing-small">{item.detail}</div>}</div> },
     {
       title: 'Quantity',
       width: 110,

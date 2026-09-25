@@ -10,7 +10,7 @@ export default function DoctorQueuePage({ secondaryActionLabel = 'Consult' }) {
   return (
     <>
       <NowServingBanner deptCode="CONS" />
-      <DepartmentQueuePage deptCode="CONS" showPaymentStatus actionMode="call-and-secondary" secondaryActionLabel={secondaryActionLabel} />
+      <DepartmentQueuePage deptCode="CONS" actionMode="call-and-secondary" secondaryActionLabel={secondaryActionLabel} />
     </>
   );
 }

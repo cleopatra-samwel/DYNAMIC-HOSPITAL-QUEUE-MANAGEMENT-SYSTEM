@@ -6,6 +6,8 @@ use App\Events\PriorityRecalculated;
 use App\Events\TicketCalled;
 use App\Models\QueueEvent;
 use App\Models\QueueTicket;
+use App\Models\Department;
+use App\Support\PaymentGate;
 use App\Support\QueueJourney;
 use Illuminate\Support\Facades\DB;
 
@@ -79,12 +81,20 @@ class PriorityEngine
         return DB::transaction(function () use ($departmentId, $performedByUserId) {
             $this->refreshDepartmentScores($departmentId);
 
+            // In a billable department (Pharmacy) only patients whose payment
+            // is already verified are eligible to be called.
+            $mustBePaid = PaymentGate::requiresPayment((string) Department::whereKey($departmentId)->value('dept_code'));
+
             $ticket = QueueTicket::query()
-                ->whereHas('service', function ($q) use ($departmentId, $performedByUserId) {
+                ->whereHas('service', function ($q) use ($departmentId, $performedByUserId, $mustBePaid) {
                     $q->where('department_id', $departmentId)
                         ->where(function ($q2) use ($performedByUserId) {
                             $q2->whereNull('doctor_id')->orWhere('doctor_id', $performedByUserId);
-                        });
+                        })
+                        ->when($mustBePaid, fn ($paid) => $paid->where(function ($q3) {
+                            $q3->where('requires_payment', false)
+                                ->orWhereHas('payment', fn ($pay) => $pay->where('status', 'VERIFIED'));
+                        }));
                 })
                 ->where('status', 'WAITING')
                 ->orderByDesc('priority_score')

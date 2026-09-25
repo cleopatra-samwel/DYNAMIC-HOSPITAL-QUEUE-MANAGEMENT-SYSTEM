@@ -160,3 +160,13 @@ button, input::placeholder, textarea::placeholder { text-transform: capitalize; 
 @media (max-width: 860px) { .billing-grid { grid-template-columns: 1fr; } .billing-info__diagnosis { border-left: 0; padding-left: 0; } }
 .lab-top { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: stretch; }
 @media (max-width: 860px) { .lab-top { grid-template-columns: 1fr; } }
+
+.forward-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.forward-tile { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 8px; border: 1px solid #d0d9e8; border-radius: 10px; background: #fff; color: #1b2a41; cursor: pointer; text-align: center; font-size: 13px; }
+.forward-tile .anticon { font-size: 20px; color: #163a8a; }
+.forward-tile span { font-size: 11px; color: #5b6b82; }
+.forward-tile:hover { border-color: #163a8a; }
+.forward-tile.is-selected { background: linear-gradient(90deg, #163a8a 0%, #7a2a72 55%, #d92b3a 100%); border-color: transparent; color: #fff; }
+.forward-tile.is-selected .anticon, .forward-tile.is-selected span { color: #fff; }
+.result-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.result-actions .ant-btn-primary { flex: 1; }

@@ -29,7 +29,9 @@ class PrescribedMedicationController extends Controller
 
         return response()->json([
             'medication_catalog_ids' => $origin->prescribedMedications()->pluck('medication_catalog_id'),
+            'medications' => $origin->prescribedMedications()->get(['medication_catalog_id', 'dosage', 'frequency', 'duration', 'quantity']),
             'other' => $origin->visit->clinicalRecord?->prescribed_medications_other,
+            'notes' => $origin->visit->clinicalRecord?->prescription_notes,
         ]);
     }
 
@@ -49,27 +51,55 @@ class PrescribedMedicationController extends Controller
             'Medication can only be prescribed on a Consultation service.'
         );
 
+        abort_unless($request->has('medications') || $request->has('medication_catalog_ids'), 422, 'Send either medications or medication_catalog_ids.');
+
         $data = $request->validate([
-            'medication_catalog_ids' => ['present', 'array'],
+            // Plain checklist (ids only) — kept as is for the original form.
+            'medication_catalog_ids' => ['sometimes', 'array'],
             'medication_catalog_ids.*' => ['integer', 'exists:medication_catalog,id'],
+            // Prescription with dosage / frequency / duration / quantity per medicine.
+            'medications' => ['sometimes', 'array'],
+            'medications.*.id' => ['required', 'integer', 'exists:medication_catalog,id'],
+            'medications.*.dosage' => ['nullable', 'string', 'max:255'],
+            'medications.*.frequency' => ['nullable', 'string', 'max:255'],
+            'medications.*.duration' => ['nullable', 'string', 'max:255'],
+            'medications.*.quantity' => ['nullable', 'integer', 'min:1', 'max:100000'],
             'other' => ['nullable', 'string', 'max:2000'],
+            'notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
-        DB::transaction(function () use ($service, $data) {
+        // One normalised list of [catalog id => details], whichever shape was sent.
+        $lines = collect($data['medications'] ?? [])->keyBy('id')->map(fn ($m) => [
+            'dosage' => $m['dosage'] ?? null,
+            'frequency' => $m['frequency'] ?? null,
+            'duration' => $m['duration'] ?? null,
+            'quantity' => $m['quantity'] ?? 1,
+        ]);
+        foreach (array_unique($data['medication_catalog_ids'] ?? []) as $catalogId) {
+            if (! $lines->has($catalogId)) {
+                $lines->put($catalogId, ['dosage' => null, 'frequency' => null, 'duration' => null, 'quantity' => 1]);
+            }
+        }
+
+        DB::transaction(function () use ($service, $data, $lines, $request) {
             $service->prescribedMedications()->delete();
 
-            foreach (array_unique($data['medication_catalog_ids']) as $catalogId) {
-                ServicePrescribedMedication::create(['service_id' => $service->id, 'medication_catalog_id' => $catalogId]);
+            foreach ($lines as $catalogId => $details) {
+                ServicePrescribedMedication::create(['service_id' => $service->id, 'medication_catalog_id' => $catalogId] + $details);
             }
 
-            $service->visit->clinicalRecord()->firstOrCreate([])->update([
+            $service->visit->clinicalRecord()->firstOrCreate([])->update(array_filter([
                 'prescribed_medications_other' => $data['other'] ?? null,
-            ]);
+                // Only touched when the caller actually sent notes.
+                'prescription_notes' => $request->has('notes') ? ($data['notes'] ?? null) : false,
+            ], fn ($value) => $value !== false));
         });
 
         return response()->json([
             'medication_catalog_ids' => $service->prescribedMedications()->pluck('medication_catalog_id'),
+            'medications' => $service->prescribedMedications()->get(['medication_catalog_id', 'dosage', 'frequency', 'duration', 'quantity']),
             'other' => $data['other'] ?? null,
+            'notes' => $service->visit->clinicalRecord()->first()?->prescription_notes,
         ]);
     }
 }
