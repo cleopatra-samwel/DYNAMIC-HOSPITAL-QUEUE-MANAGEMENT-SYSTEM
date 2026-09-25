@@ -7,6 +7,7 @@ import { logoutUser, switchRole } from '../store/slices/authSlice';
 import { DASHBOARD_ROUTE_BY_ROLE } from '../routes/roles';
 import BrandHeader from '../components/BrandHeader';
 import ConnectionIndicator from '../components/ConnectionIndicator';
+import NotificationBell from '../components/NotificationBell';
 import useConnectionState from '../hooks/useConnectionState';
 
 /**
@@ -55,9 +56,7 @@ export default function DashboardLayout({ menuItems }) {
 
   return <div className="app-frame dashboard-frame">
     <ConnectionIndicator state={connectionState} />
-    <BrandHeader
-      right={<button type="button" className="dashboard-menu-toggle" aria-label="Toggle sidebar" onClick={() => setSidebarOpen(!sidebarOpen)}><MenuOutlined /></button>}
-    />
+    <BrandHeader right={<div className="header-actions"><NotificationBell /></div>} />
     <div className="dashboard-body">
       <aside className={`dashboard-sidebar ${sidebarOpen ? 'is-open' : ''}`}>
         {roles.length > 1 && (
@@ -75,7 +74,7 @@ export default function DashboardLayout({ menuItems }) {
         <nav className="sidebar-nav">{menuItems.map((item) => <button className={item.key === activeItem.key ? 'active' : ''} key={item.key} type="button" onClick={() => navigate(item.path)}>{item.icon}<span>{item.label}</span></button>)}</nav>
         <button type="button" className="sidebar-logout" onClick={handleLogout}><LogoutOutlined /><span>Sign out</span></button>
       </aside>
-      <main className="dashboard-content"><div className="breadcrumb-bar"><button type="button" onClick={() => navigate(-1)} aria-label="Go back">&#8592;</button><Breadcrumb items={[{ title: <HomeOutlined /> }, ...(activeItem.breadcrumb || []).map((title) => ({ title }))]} /></div><section className="dashboard-panel"><Outlet /></section></main>
+      <main className="dashboard-content"><div className="breadcrumb-row"><button type="button" className="dashboard-menu-toggle" aria-label="Toggle sidebar" onClick={() => setSidebarOpen(!sidebarOpen)}><MenuOutlined /></button><div className="breadcrumb-bar"><Breadcrumb items={[{ title: <HomeOutlined /> }, ...(activeItem.breadcrumb || []).map((title) => ({ title }))]} /></div></div><section className="dashboard-panel"><Outlet /></section></main>
     </div>
   </div>;
 }

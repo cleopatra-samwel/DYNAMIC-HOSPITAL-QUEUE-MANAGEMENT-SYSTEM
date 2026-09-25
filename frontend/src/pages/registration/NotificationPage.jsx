@@ -1,34 +1,40 @@
 import { useEffect, useState } from 'react';
-import { Empty, List, Spin, Typography } from 'antd';
-import { BellOutlined } from '@ant-design/icons';
+import { Empty, List, Spin, Tag, Typography } from 'antd';
+import { WarningOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import apiClient from '../../services/apiClient';
 
 const { Text } = Typography;
 
+/**
+ * Shared "Notification" page for every staff role. Shows ONLY overdue-wait
+ * alerts — patients who waited past the expected time without being called
+ * — for the departments the signed-in user serves (same feed as the bell
+ * in the ribbon, plus the ones since resolved).
+ */
 export default function NotificationPage() {
-  const [notifications, setNotifications] = useState([]);
+  const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiClient.get('/queue-events/recent')
-      .then(({ data }) => setNotifications(data.notifications))
+    apiClient.get('/notifications/staff-alerts', { params: { include_resolved: 1 } })
+      .then(({ data }) => setAlerts(data.alerts))
       .finally(() => setLoading(false));
   }, []);
 
   if (loading) return <Spin />;
-  if (!notifications.length) return <Empty description="No notifications yet" />;
+  if (!alerts.length) return <Empty description="No overdue patients" />;
 
   return (
     <List
       itemLayout="horizontal"
-      dataSource={notifications}
-      renderItem={(item) => (
-        <List.Item>
+      dataSource={alerts}
+      renderItem={(alert) => (
+        <List.Item extra={alert.queue_ticket?.status === 'WAITING' ? <Tag color="volcano">Still waiting</Tag> : <Tag>Called</Tag>}>
           <List.Item.Meta
-            avatar={<BellOutlined style={{ fontSize: 18, color: '#8c1d2d' }} />}
-            title={item.message}
-            description={<Text type="secondary">{item.performed_by ? `${item.performed_by} · ` : ''}{dayjs(item.event_time).format('DD MMM YYYY, HH:mm')}</Text>}
+            avatar={<WarningOutlined style={{ fontSize: 18, color: '#d92b3a' }} />}
+            title={alert.message}
+            description={<Text type="secondary">{alert.department?.dept_name} · {dayjs(alert.created_at).format('DD MMM YYYY, HH:mm')}</Text>}
           />
         </List.Item>
       )}

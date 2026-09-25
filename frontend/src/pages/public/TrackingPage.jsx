@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Card, Result, Spin, Tag } from 'antd';
+import { Card, Empty, List, Result, Spin, Tag } from 'antd';
 import { MenuOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import { getEcho } from '../../services/echo';
@@ -8,19 +8,18 @@ import useConnectionState from '../../hooks/useConnectionState';
 import ConnectionIndicator from '../../components/ConnectionIndicator';
 import HeroCarousel from '../../components/HeroCarousel';
 import TrackingInfoPanel from './TrackingInfoPanel';
+import dayjs from 'dayjs';
 import { formatStatusLabel } from '../../utils/formatLabel';
+import useTrackingLanguage from '../../utils/trackingI18n';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
 
-const STATUS_LABELS = {
-  WAITING: 'Waiting',
-  CALLED: 'You are being called — please proceed',
-  IN_SERVICE: 'In service',
-  COMPLETED: 'Completed',
-  NO_SHOW: 'Marked as no-show',
-  CANCELLED: 'Cancelled',
-  ON_HOLD: 'On hold',
-  TRANSFERRED: 'Transferred',
+const NOTIFICATION_TYPE_COLORS = {
+  WAITING: 'gold',
+  APPROACHING: 'orange',
+  CALLED: 'blue',
+  TRANSFERRED: 'purple',
+  COMPLETED: 'green',
 };
 
 const STATUS_COLORS = {
@@ -59,6 +58,8 @@ export default function TrackingPage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [view, setView] = useState('home');
+  const { language, setLanguage, t } = useTrackingLanguage();
 
   const fetchStatus = () => {
     axios.get(`${API_BASE}/track/${token}`)
@@ -90,56 +91,106 @@ export default function TrackingPage() {
   }
 
   if (notFound) {
-    return <Result status="404" title="Tracking link not found" subTitle="This link may be incorrect or the visit no longer exists." />;
+    return <Result status="404" title={t.notFoundTitle} subTitle={t.notFoundSub} />;
   }
+
+  const hint = (t.hints[status.status] || t.hints.DEFAULT)(status.department);
+  const ahead = status.queue_numbers_ahead;
+  const behind = status.queue_numbers_behind;
 
   return (
     <div className="tracking-page">
       <HeroCarousel />
 
-      <button type="button" className="tracking-menu-toggle" aria-label="Open menu" onClick={() => setPanelOpen(true)}>
+      <button type="button" className="tracking-menu-toggle" aria-label={t.openMenu} onClick={() => setPanelOpen(true)}>
         <MenuOutlined />
       </button>
 
       <TrackingInfoPanel
         open={panelOpen}
         onClose={() => setPanelOpen(false)}
-        notifications={status.notifications}
-        status={status.status}
-        department={status.department}
+        view={view}
+        onNavigate={setView}
+        language={language}
+        onLanguageChange={setLanguage}
+        t={t}
       />
 
       <div style={{ maxWidth: 480, margin: '40px auto', padding: '0 16px', width: '100%' }}>
-        <ConnectionIndicator state={connectionState} />
-        <Card>
-          <p style={{ color: '#8c8c8c', marginBottom: 4 }}>Department</p>
-          <h2 style={{ marginTop: 0 }}>{status.department || 'Registration'}</h2>
+        <ConnectionIndicator state={connectionState} label={t.reconnecting} />
 
-          <p style={{ color: '#8c8c8c', marginBottom: 4 }}>Your queue number</p>
-          <h1 style={{ fontSize: 48, margin: 0 }}>{status.queue_number || '—'}</h1>
+        {view === 'home' && (
+          <Card className="tracking-card">
+            <p className="tracking-card__label">{t.department}</p>
+            <h2 style={{ marginTop: 0, color: '#fff' }}>{status.department || t.registration}</h2>
 
-          <div style={{ margin: '16px 0' }}>
-            <Tag color={STATUS_COLORS[status.status] || 'default'} style={{ fontSize: 16, padding: '4px 12px' }}>
-              {STATUS_LABELS[status.status] || formatStatusLabel(status.status) || 'Registered'}
-            </Tag>
-          </div>
+            <p className="tracking-card__label">{t.yourQueueNumber}</p>
+            <h1 style={{ fontSize: 48, margin: 0, color: '#fff' }}>{status.queue_number || '—'}</h1>
 
-          {status.position !== null && status.position !== undefined && (
-            <div>
-              <p style={{ marginBottom: 4 }}>
-                {status.position === 0 ? "You're next." : `${status.position} patient(s) ahead of you.`}
+            <div style={{ margin: '16px 0' }}>
+              <Tag color={STATUS_COLORS[status.status] || 'default'} style={{ fontSize: 16, padding: '4px 12px' }}>
+                {t.statusLabels[status.status] || formatStatusLabel(status.status) || t.registered}
+              </Tag>
+            </div>
+
+            {status.position !== null && status.position !== undefined && (
+              <p style={{ marginBottom: 12 }}>
+                {status.position === 0 ? t.next : t.patientsAhead(status.position)}
                 {status.estimated_wait_minutes !== null && status.estimated_wait_minutes !== undefined && (
-                  <> Estimated wait: ~{status.estimated_wait_minutes} min.</>
+                  <> {t.estimatedWait(status.estimated_wait_minutes)}</>
                 )}
               </p>
-              {status.queue_numbers_ahead?.length > 0 && (
-                <p style={{ color: '#8c8c8c', fontSize: 13 }}>
-                  Ahead of you: {status.queue_numbers_ahead.join(', ')}
-                </p>
+            )}
+
+            <p style={{ margin: 0, color: '#b8c7e6' }}>{hint}</p>
+          </Card>
+        )}
+
+        {view === 'status' && (
+          <>
+            <Card className="tracking-card" style={{ marginBottom: 16 }}>
+              <p className="tracking-card__label">{t.yourQueueNumber}</p>
+              <h1 style={{ fontSize: 40, margin: 0, color: '#fff' }}>{status.queue_number || '—'}</h1>
+            </Card>
+
+            {ahead === null || ahead === undefined ? (
+              <Card style={{ marginBottom: 16 }}>{t.statusUnavailable}</Card>
+            ) : (
+              <>
+                <Card title={`${t.aheadOfYou} (${ahead.length})`} style={{ marginBottom: 16 }}>
+                  {ahead.length > 0
+                    ? ahead.map((number) => <span key={number} className="queue-chip">{number}</span>)
+                    : t.nobodyAhead}
+                </Card>
+                <Card title={`${t.behindYou} (${behind?.length ?? 0})`} style={{ marginBottom: 16 }}>
+                  {behind?.length > 0
+                    ? behind.map((number) => <span key={number} className="queue-chip">{number}</span>)
+                    : t.nobodyBehind}
+                </Card>
+              </>
+            )}
+
+            <Card title={t.yourUpdates}>
+              {status.notifications?.length > 0 ? (
+                <List
+                  size="small"
+                  dataSource={status.notifications}
+                  renderItem={(notification) => (
+                    <List.Item>
+                      <List.Item.Meta
+                        title={<Tag color={NOTIFICATION_TYPE_COLORS[notification.type] || 'default'}>{formatStatusLabel(notification.type)}</Tag>}
+                        description={notification.message}
+                      />
+                      <span style={{ color: '#8c8c8c', fontSize: 12 }}>{dayjs(notification.created_at).format('HH:mm')}</span>
+                    </List.Item>
+                  )}
+                />
+              ) : (
+                <Empty description={t.noUpdates} />
               )}
-            </div>
-          )}
-        </Card>
+            </Card>
+          </>
+        )}
       </div>
     </div>
   );

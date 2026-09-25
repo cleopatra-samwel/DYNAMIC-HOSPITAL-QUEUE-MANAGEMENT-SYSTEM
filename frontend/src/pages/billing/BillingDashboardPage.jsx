@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import apiClient from '../../services/apiClient';
 import OpenDisplayBoardButton from '../../components/OpenDisplayBoardButton';
 
-const cardStyle = { borderLeft: '4px solid #8c1d2d' };
+const cardStyle = {};
 
 /**
  * Only "Pending Payments" links out (to /billing/pending-payments) —
@@ -37,17 +37,17 @@ export default function BillingDashboardPage() {
       </div>
       <Row gutter={16}>
         <Col xs={24} sm={8}>
-          <Card hoverable style={{ ...cardStyle, cursor: 'pointer' }} onClick={() => navigate('/billing/pending-payments')}>
+          <Card hoverable className="stat-card" style={{ ...cardStyle, cursor: 'pointer' }} onClick={() => navigate('/billing/pending-payments')}>
             <Statistic title="Pending Payments" value={stats.pending_payments} valueStyle={{ color: '#8c1d2d' }} prefix={<ClockCircleOutlined />} />
           </Card>
         </Col>
         <Col xs={24} sm={8}>
-          <Card style={cardStyle}>
+          <Card className="stat-card" style={cardStyle}>
             <Statistic title="Cash Collected Today" value={stats.cash_collected_today} precision={2} valueStyle={{ color: '#1a7f37' }} prefix={<CheckCircleOutlined />} />
           </Card>
         </Col>
         <Col xs={24} sm={8}>
-          <Card style={cardStyle}>
+          <Card className="stat-card" style={cardStyle}>
             <Statistic title="Insurance Claims Verified Today" value={stats.insurance_claims_verified_today} prefix={<SafetyCertificateOutlined />} />
           </Card>
         </Col>

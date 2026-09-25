@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Patient;
+use App\Models\QueueTicket;
 use App\Models\Service;
 use App\Models\Visit;
 use App\Rules\ActiveDoctor;
@@ -145,6 +146,10 @@ class VisitController extends Controller
             'emergency' => (clone $base)->where('patient_type', 'Emergency')->count(),
             'normal' => (clone $base)->where('patient_type', 'Normal')->count(),
             'total' => (clone $base)->count(),
+            // Live Registration queue length (not limited to today's visits).
+            'waiting' => QueueTicket::where('status', 'WAITING')
+                ->whereHas('service.department', fn ($q) => $q->where('dept_code', 'REG'))
+                ->count(),
         ]);
     }
 

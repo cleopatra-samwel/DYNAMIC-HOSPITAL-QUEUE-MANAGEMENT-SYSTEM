@@ -68,7 +68,7 @@ export default function NowServingBanner({ deptCode }) {
       type="info"
       showIcon
       message={`NOW SERVING: ${ticket.queue_number} – ${ticket.service?.visit?.patient?.name || 'Patient'}`}
-      style={{ marginBottom: 16 }}
+      style={{ marginBottom: 16, width: 'fit-content', maxWidth: '100%' }}
     />
   );
 }

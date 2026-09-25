@@ -4,7 +4,7 @@ import { BarChartOutlined, ClockCircleOutlined, FieldTimeOutlined, TeamOutlined 
 import { useNavigate } from 'react-router-dom';
 import apiClient from '../../services/apiClient';
 
-const cardStyle = { borderLeft: '4px solid #8c1d2d', cursor: 'pointer' };
+const cardStyle = { cursor: 'pointer' };
 
 /**
  * Administrator's own Dashboard — just the 4 summary cards wired to
@@ -29,22 +29,22 @@ export default function AdminDashboardPage() {
   return (
     <Row gutter={[16, 16]}>
       <Col xs={12} md={6}>
-        <Card hoverable style={cardStyle} onClick={() => navigate('/admin/reports')}>
+        <Card hoverable className="stat-card" style={cardStyle} onClick={() => navigate('/admin/reports')}>
           <Statistic title="Patients Today" value={summary?.total_patients_today ?? 0} prefix={<TeamOutlined />} />
         </Card>
       </Col>
       <Col xs={12} md={6}>
-        <Card hoverable style={cardStyle} onClick={() => navigate('/admin/reports')}>
+        <Card hoverable className="stat-card" style={cardStyle} onClick={() => navigate('/admin/reports')}>
           <Statistic title="Currently Waiting" value={summary?.currently_waiting ?? 0} prefix={<ClockCircleOutlined />} />
         </Card>
       </Col>
       <Col xs={12} md={6}>
-        <Card hoverable style={cardStyle} onClick={() => navigate('/admin/reports')}>
+        <Card hoverable className="stat-card" style={cardStyle} onClick={() => navigate('/admin/reports')}>
           <Statistic title="Served Today" value={summary?.total_served_today ?? 0} prefix={<BarChartOutlined />} />
         </Card>
       </Col>
       <Col xs={12} md={6}>
-        <Card hoverable style={cardStyle} onClick={() => navigate('/admin/long-waiting-alerts')}>
+        <Card hoverable className="stat-card" style={cardStyle} onClick={() => navigate('/admin/long-waiting-alerts')}>
           <Statistic
             title="Longest Waiting"
             value={summary?.longest_currently_waiting ? summary.longest_currently_waiting.waiting_minutes : 0}

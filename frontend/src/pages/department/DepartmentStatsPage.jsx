@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import OpenDisplayBoardButton from '../../components/OpenDisplayBoardButton';
 import { STAT_COLORS, STAT_ICONS, useDepartmentStats } from './departmentStats';
 
-const cardStyle = { borderLeft: '4px solid #8c1d2d' };
+const cardStyle = {};
 
 /**
  * The "Dashboard" sidebar item for Doctor/Laboratory/Pharmacy — just the
@@ -30,7 +30,7 @@ export default function DepartmentStatsPage({ deptCode, statCards }) {
           <Col xs={24} sm={12} md={8} lg={6} key={card.key}>
             <Card
               hoverable={!!card.path}
-              style={card.path ? { ...cardStyle, cursor: 'pointer' } : cardStyle}
+              className="stat-card" style={card.path ? { ...cardStyle, cursor: 'pointer' } : cardStyle}
               onClick={card.path ? () => navigate(card.path) : undefined}
             >
               <Statistic

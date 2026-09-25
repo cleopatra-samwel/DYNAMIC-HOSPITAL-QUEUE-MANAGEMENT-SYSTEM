@@ -225,6 +225,8 @@ Route::middleware('auth:sanctum')->group(function () {
     | LONG_WAIT_ALERT — see NotificationController).
     */
     Route::get('/notifications', [NotificationController::class, 'index']);
+    // Staff alert bell — overdue-wait alerts scoped to the caller's own departments.
+    Route::get('/notifications/staff-alerts', [NotificationController::class, 'staffAlerts']);
 
     Route::get('/audio-clips', [AudioClipController::class, 'index']);
     Route::post('/audio-clips', [AudioClipController::class, 'store']);

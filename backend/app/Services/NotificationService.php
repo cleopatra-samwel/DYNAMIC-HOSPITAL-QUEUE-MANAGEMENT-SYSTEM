@@ -105,6 +105,17 @@ class NotificationService
         ]);
     }
 
+    /** Staff-facing: a patient has waited past the expected time without being called. Same no-visit_id rule as alertLongWait. */
+    public function alertOverdueWait(QueueTicket $ticket, Department $department, int $waitingMinutes, int $expectedMinutes): Notification
+    {
+        return Notification::create([
+            'type' => 'WAIT_OVERDUE',
+            'message' => "Patient {$ticket->queue_number} has waited {$waitingMinutes} min in {$department->dept_name} without being called — longer than the expected {$expectedMinutes} min.",
+            'queue_ticket_id' => $ticket->id,
+            'department_id' => $department->id,
+        ]);
+    }
+
     // No phone format validation exists yet — the real gateway integration
     // must add this, since malformed numbers currently pass through
     // untouched all the way to the delivery attempt. Deliberately

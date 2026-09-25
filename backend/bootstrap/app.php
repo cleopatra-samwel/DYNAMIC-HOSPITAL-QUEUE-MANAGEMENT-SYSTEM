@@ -1,6 +1,7 @@
 <?php
 
 use App\Console\Commands\CheckLongWaitingTickets;
+use App\Console\Commands\CheckOverdueWaitingTickets;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -26,6 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
     // Laravel's scheduler isn't a background daemon by itself.
     ->withSchedule(function (Schedule $schedule): void {
         $schedule->command(CheckLongWaitingTickets::class)->everyMinute();
+        $schedule->command(CheckOverdueWaitingTickets::class)->everyMinute();
     })
     // Registered separately (not via withRouting's `channels:` param) so the
     // broadcasting auth route (POST /broadcasting/auth, which private

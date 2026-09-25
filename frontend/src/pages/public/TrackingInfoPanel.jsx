@@ -1,75 +1,47 @@
-import { CloseOutlined, PhoneOutlined } from '@ant-design/icons';
-import { Empty, List, Tag } from 'antd';
-import dayjs from 'dayjs';
+import { CloseOutlined, HomeOutlined, PhoneOutlined, UnorderedListOutlined } from '@ant-design/icons';
 import BrandHeader from '../../components/BrandHeader';
-import { formatStatusLabel } from '../../utils/formatLabel';
-
-const NOTIFICATION_TYPE_COLORS = {
-  WAITING: 'gold',
-  APPROACHING: 'orange',
-  CALLED: 'blue',
-  TRANSFERRED: 'purple',
-  COMPLETED: 'green',
-};
-
-const NEXT_STEP_HINTS = {
-  WAITING: (dept) => `You are waiting for ${dept || 'your department'}.`,
-  CALLED: (dept) => `You have been called — please proceed to ${dept || 'the counter shown on screen'}.`,
-  IN_SERVICE: (dept) => `You are currently being seen in ${dept || 'your department'}.`,
-  ON_HOLD: () => 'Your case is on hold — please wait, you will be called again.',
-  TRANSFERRED: (dept) => `You are being transferred to ${dept || 'your next department'}.`,
-  COMPLETED: () => 'Your visit is complete. Thank you.',
-  NO_SHOW: () => 'You were marked as not present — please check in again at Registration.',
-  CANCELLED: () => 'This ticket was cancelled.',
-};
 
 /**
- * Slide-in panel for the public tracking page — same toggle/drawer
+ * Slide-in sidebar for the public tracking page — same toggle/drawer
  * pattern as staff dashboards' RoleSidebar (identical .role-sidebar*
- * CSS), different content: this visit's own notification history,
- * a plain-language "what happens next", and the hospital's support
- * number. Nothing here is patient-identifying — notifications are
- * already scoped server-side to this one visit (see TrackingController).
+ * CSS). Holds the Home / Status navigation, the English/Kiswahili
+ * switch, and the hospital's support number. The notification history
+ * and "what happens next" now live on the pages it navigates to (see
+ * TrackingPage), not in here.
  */
-export default function TrackingInfoPanel({ open, onClose, notifications, status, department }) {
-  const hint = (NEXT_STEP_HINTS[status] || (() => 'Please wait — your status will update automatically.'))(department);
+export default function TrackingInfoPanel({ open, onClose, view, onNavigate, language, onLanguageChange, t }) {
+  const navigate = (next) => {
+    onNavigate(next);
+    onClose();
+  };
 
   return (
     <>
       <div className={`role-sidebar__overlay${open ? ' is-open' : ''}`} onClick={onClose} aria-hidden="true" />
       <aside className={`role-sidebar${open ? ' is-open' : ''}`} aria-hidden={!open}>
-        <button type="button" className="role-sidebar__close" aria-label="Close menu" onClick={onClose}><CloseOutlined /></button>
-        <BrandHeader compact subtitle="Your Visit" />
+        <button type="button" className="role-sidebar__close" aria-label={t.closeMenu} onClick={onClose}><CloseOutlined /></button>
+        <BrandHeader compact subtitle={t.yourVisit} />
 
-        <div className="tracking-info-panel__section">
-          <h4>What happens next</h4>
-          <p style={{ margin: 0 }}>{hint}</p>
-        </div>
+        <nav className="role-sidebar__nav" style={{ flex: 'none' }}>
+          <button type="button" className={view === 'home' ? 'is-active' : ''} onClick={() => navigate('home')}>
+            <HomeOutlined /> {t.home}
+          </button>
+          <button type="button" className={view === 'status' ? 'is-active' : ''} onClick={() => navigate('status')}>
+            <UnorderedListOutlined /> {t.status}
+          </button>
+        </nav>
 
         <div className="tracking-info-panel__section" style={{ flex: 1 }}>
-          <h4>Your Updates</h4>
-          {notifications?.length > 0 ? (
-            <List
-              size="small"
-              dataSource={notifications}
-              renderItem={(notification) => (
-                <List.Item>
-                  <List.Item.Meta
-                    title={<Tag color={NOTIFICATION_TYPE_COLORS[notification.type] || 'default'}>{formatStatusLabel(notification.type)}</Tag>}
-                    description={notification.message}
-                  />
-                  <span style={{ color: '#8c8c8c', fontSize: 12 }}>{dayjs(notification.created_at).format('HH:mm')}</span>
-                </List.Item>
-              )}
-            />
-          ) : (
-            <Empty description="No updates yet" />
-          )}
+          <h4>{t.language}</h4>
+          <div className="tracking-lang-switch" role="group" aria-label={t.language}>
+            <button type="button" className={language === 'en' ? 'is-active' : ''} onClick={() => onLanguageChange('en')}>English</button>
+            <button type="button" className={language === 'sw' ? 'is-active' : ''} onClick={() => onLanguageChange('sw')}>Kiswahili</button>
+          </div>
         </div>
 
         <div className="tracking-info-panel__section">
-          <h4>Need help?</h4>
-          <p style={{ margin: 0 }}><PhoneOutlined /> Support/Emergency: +255 22 215 1367</p>
+          <h4>{t.needHelp}</h4>
+          <p style={{ margin: 0 }}><PhoneOutlined /> {t.support}: +255 22 215 1367</p>
         </div>
       </aside>
     </>

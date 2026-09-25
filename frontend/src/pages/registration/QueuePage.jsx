@@ -174,7 +174,7 @@ export default function QueuePage() {
         if (!canAct) {
           return (
             <Tooltip title="Your active role cannot act on this department's tickets">
-              <span style={{ color: '#8c8c8c' }}>—</span>
+              {ticket.status === 'CALLED' ? <Button size="small" disabled>Called</Button> : <span style={{ color: '#8c8c8c' }}>—</span>}
             </Tooltip>
           );
         }
@@ -185,6 +185,9 @@ export default function QueuePage() {
           return (
             <Button size="small" loading={busy} onClick={() => callNextInDepartment(ticket)}>Call</Button>
           );
+        }
+        if (ticket.status === 'CALLED') {
+          return <Button size="small" disabled>Called</Button>;
         }
         return <span style={{ color: '#8c8c8c' }}>—</span>;
       },

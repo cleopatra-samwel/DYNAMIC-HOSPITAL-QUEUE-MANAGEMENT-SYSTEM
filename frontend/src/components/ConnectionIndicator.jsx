@@ -6,13 +6,13 @@ import { LoadingOutlined, WifiOutlined } from '@ant-design/icons';
  * interaction, just tells the viewer their data might be a beat behind
  * while the live connection recovers.
  */
-export default function ConnectionIndicator({ state }) {
+export default function ConnectionIndicator({ state, label = 'Reconnecting...' }) {
   if (state === 'connected') return null;
 
   return (
     <div style={{ position: 'fixed', top: 12, right: 12, zIndex: 1000 }}>
       <Tag icon={<LoadingOutlined spin />} color="warning">
-        Reconnecting...
+        {label}
       </Tag>
     </div>
   );

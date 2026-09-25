@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable([
     'service_id', 'priority_level_id', 'queue_number', 'priority_score',
     'status', 'called_at', 'service_started_at', 'completed_at', 'call_attempts',
-    'long_wait_alerted_at',
+    'long_wait_alerted_at', 'overdue_alerted_at',
 ])]
 class QueueTicket extends Model
 {
@@ -24,6 +24,7 @@ class QueueTicket extends Model
             'service_started_at' => 'datetime',
             'completed_at' => 'datetime',
             'long_wait_alerted_at' => 'datetime',
+            'overdue_alerted_at' => 'datetime',
         ];
     }
 

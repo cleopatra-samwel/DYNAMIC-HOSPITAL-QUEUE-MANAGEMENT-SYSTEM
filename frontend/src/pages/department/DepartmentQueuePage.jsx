@@ -216,7 +216,7 @@ export default function DepartmentQueuePage({ deptCode, showPaymentStatus = fals
         if (!canAct) {
           return (
             <Tooltip title="Your active role cannot act on this department's tickets">
-              <span style={{ color: '#8c8c8c' }}>—</span>
+              {ticket.status === 'CALLED' ? <Button size="small" disabled>Called</Button> : <span style={{ color: '#8c8c8c' }}>—</span>}
             </Tooltip>
           );
         }
@@ -260,7 +260,7 @@ export default function DepartmentQueuePage({ deptCode, showPaymentStatus = fals
         }
         return (
           <Space wrap>
-            <Button size="small" disabled={!['WAITING', 'ON_HOLD'].includes(ticket.status)} loading={busy} onClick={() => runAction(ticket, 'call')}>Call</Button>
+            <Button size="small" disabled={!['WAITING', 'ON_HOLD'].includes(ticket.status)} loading={busy} onClick={() => runAction(ticket, 'call')}>{ticket.status === 'CALLED' ? 'Called' : 'Call'}</Button>
             <Button size="small" disabled={ticket.status !== 'CALLED'} loading={busy} onClick={() => runAction(ticket, 'start-service')}>Start Service</Button>
             <Button size="small" type="primary" onClick={() => setViewingTicket(ticket)}>View</Button>
             <Button size="small" disabled={ticket.status !== 'CALLED'} loading={busy} onClick={() => runAction(ticket, 'no-show')}>Mark No-Show</Button>

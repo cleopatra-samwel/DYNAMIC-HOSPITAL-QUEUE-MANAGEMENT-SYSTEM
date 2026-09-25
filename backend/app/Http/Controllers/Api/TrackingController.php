@@ -46,6 +46,7 @@ class TrackingController extends Controller
         $service = $visit->services()->with(['department', 'queueTicket'])->latest('id')->first();
         $ticket = $service?->queueTicket;
         $queueNumbersAhead = $this->queueNumbersAhead($ticket, $service?->department_id);
+        $queueNumbersBehind = $this->queueNumbersBehind($ticket, $service?->department_id);
         $position = $queueNumbersAhead === null ? null : count($queueNumbersAhead);
 
         return response()->json([
@@ -56,6 +57,7 @@ class TrackingController extends Controller
             'status' => $ticket?->status,
             'position' => $position,
             'queue_numbers_ahead' => $queueNumbersAhead,
+            'queue_numbers_behind' => $queueNumbersBehind,
             'estimated_wait_minutes' => $position === null
                 ? null
                 : (int) round($position * $this->averageServiceMinutes($service->department_id)),
@@ -94,6 +96,35 @@ class TrackingController extends Controller
                     ->orWhere(function ($q2) use ($ticket) {
                         $q2->where('priority_score', $ticket->priority_score)
                             ->where('created_at', '<', $ticket->created_at);
+                    });
+            })
+            ->orderByDesc('priority_score')
+            ->orderBy('created_at')
+            ->pluck('queue_number')
+            ->all();
+    }
+
+    /**
+     * Mirror of queueNumbersAhead(): the waiting tickets that will be called
+     * AFTER this one, in call order — ticket numbers only, same privacy rule.
+     *
+     * @return list<string>|null
+     */
+    private function queueNumbersBehind(?QueueTicket $ticket, ?int $departmentId): ?array
+    {
+        if (! $ticket || $ticket->status !== 'WAITING' || ! $departmentId) {
+            return null;
+        }
+
+        return QueueTicket::query()
+            ->whereHas('service', fn ($q) => $q->where('department_id', $departmentId))
+            ->where('status', 'WAITING')
+            ->where('id', '!=', $ticket->id)
+            ->where(function ($q) use ($ticket) {
+                $q->where('priority_score', '<', $ticket->priority_score)
+                    ->orWhere(function ($q2) use ($ticket) {
+                        $q2->where('priority_score', $ticket->priority_score)
+                            ->where('created_at', '>=', $ticket->created_at);
                     });
             })
             ->orderByDesc('priority_score')

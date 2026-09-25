@@ -1,7 +1,7 @@
 import muhimbiliLogo from '../assets/muhimbili_logo.png';
 
 /**
- * The two-ribbon (red top / blue second) brand header, shared by the login
+ * The single blue ribbon brand header (title with the subtitle underneath), shared by the login
  * page, the role sidebar, and every dashboard page so the same identity
  * chrome appears consistently across the app.
  */
@@ -20,11 +20,15 @@ export default function BrandHeader({
             onError={(event) => { event.currentTarget.src = '/muhimbili-logo.svg'; }}
             alt="Muhimbili National Hospital"
           />
-          {title && <span>{title}</span>}
+          {(title || subtitle) && (
+            <div className="brand-lockup__text">
+              {title && <span>{title}</span>}
+              {subtitle && <small>{subtitle}</small>}
+            </div>
+          )}
         </div>
         {right}
       </div>
-      <div className="brand-header__sub"><span>{subtitle}</span></div>
     </header>
   );
 }
