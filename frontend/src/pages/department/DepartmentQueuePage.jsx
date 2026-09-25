@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import { Button, Input, Space, Table, Tag, Tooltip, message } from 'antd';
 import { SearchOutlined, SoundOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -54,13 +55,17 @@ const ACTION_LABELS = {
  *   - 'review-only' (Laboratory's "Perform Test" sidebar item): no Call
  *     button at all — just `secondaryActionLabel` (e.g. "Review") once the
  *     ticket has already been called elsewhere.
- * All three show "View" once COMPLETED. The secondary/review button
+ *   - 'call-and-pay' (Billing's "Queue" sidebar item): "Call" while waiting,
+ *     then "Called" + "Verify Payment", which opens Pending Payments
+ *     straight on this ticket's service.
+ * The first three show "View" once COMPLETED. The secondary/review button
  * silently fires start-service first (if needed) so the modal opens
  * directly on the fillable form instead of stopping on an intermediate
  * "Start Service" screen.
  */
 export default function DepartmentQueuePage({ deptCode, showPaymentStatus = false, extraColumns = [], actionMode = 'full', secondaryActionLabel = 'Consult' }) {
   const activeRole = useSelector((state) => state.auth.user?.active_role);
+  const navigate = useNavigate();
   const [department, setDepartment] = useState(null);
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -234,6 +239,20 @@ export default function DepartmentQueuePage({ deptCode, showPaymentStatus = fals
           }
           if (ticket.status === 'COMPLETED') {
             return <Button size="small" onClick={() => setViewingTicket(ticket)}>View</Button>;
+          }
+          return <span style={{ color: '#8c8c8c' }}>—</span>;
+        }
+        if (actionMode === 'call-and-pay') {
+          if (['WAITING', 'ON_HOLD'].includes(ticket.status)) {
+            return <Button size="small" loading={busy} onClick={() => runAction(ticket, 'call')}>Call</Button>;
+          }
+          if (ticket.status === 'CALLED') {
+            return (
+              <Space wrap>
+                <Button size="small" disabled>Called</Button>
+                <Button size="small" type="primary" onClick={() => navigate('/billing/pending-payments', { state: { serviceId: ticket.service?.billing_for_service_id } })}>Verify Payment</Button>
+              </Space>
+            );
           }
           return <span style={{ color: '#8c8c8c' }}>—</span>;
         }

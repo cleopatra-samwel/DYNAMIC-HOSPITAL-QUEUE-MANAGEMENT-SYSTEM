@@ -7,7 +7,9 @@ use App\Http\Controllers\Controller;
 use App\Models\LabTestCatalog;
 use App\Models\MedicationCatalog;
 use App\Models\Payment;
+use App\Models\QueueTicket;
 use App\Models\Service;
+use App\Support\BillingQueue;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -106,6 +108,9 @@ class PaymentController extends Controller
             return $payment;
         });
 
+        // Paid: the cashier's Billing-queue ticket for this service is done.
+        BillingQueue::complete($service, $request->user());
+
         PaymentVerified::dispatch($payment->fresh());
 
         return response()->json(['payment' => $payment->fresh()->load(['service.department', 'service.visit.patient', 'verifiedBy', 'items'])], 201);
@@ -185,6 +190,9 @@ class PaymentController extends Controller
             'pending_payments' => $pendingCount,
             'cash_collected_today' => (float) (clone $verifiedToday)->where('method', 'Cash')->sum('amount'),
             'insurance_claims_verified_today' => (clone $verifiedToday)->where('method', 'Insurance')->count(),
+            'waiting' => QueueTicket::where('status', 'WAITING')
+                ->whereHas('service.department', fn ($q) => $q->where('dept_code', 'BILL'))
+                ->count(),
         ]);
     }
 }

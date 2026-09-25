@@ -43,7 +43,7 @@ class TrackingController extends Controller
     {
         $visit = Visit::where('tracking_token', $trackingToken)->firstOrFail();
 
-        $service = $visit->services()->with(['department', 'queueTicket'])->latest('id')->first();
+        $service = $visit->services()->clinical()->with(['department', 'queueTicket'])->latest('id')->first();
         $ticket = $service?->queueTicket;
         $queueNumbersAhead = $this->queueNumbersAhead($ticket, $service?->department_id);
         $queueNumbersBehind = $this->queueNumbersBehind($ticket, $service?->department_id);

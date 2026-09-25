@@ -122,3 +122,10 @@ button, input, select { font: inherit; }
 .ant-card { border-radius: 24px !important; overflow: hidden; }
 .stat-card { position: relative; max-width: 260px; }
 .stat-card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: linear-gradient(180deg, #163a8a, #7a2a72, #d92b3a); }
+
+/* Table headers use the same blue-to-red gradient as the buttons, spanning the whole header row. */
+.ant-table-wrapper .ant-table-thead { background: linear-gradient(90deg, #163a8a 0%, #7a2a72 55%, #d92b3a 100%); }
+.ant-table-wrapper .ant-table-thead > tr > th, .ant-table-wrapper .ant-table-thead > tr > td { background: transparent !important; color: #fff !important; }
+.ant-table-wrapper .ant-table-thead > tr > th::before { background-color: #ffffff55 !important; }
+.ant-table-wrapper .ant-table-thead .ant-table-column-sorter, .ant-table-wrapper .ant-table-thead .ant-table-filter-trigger { color: #ffffffcc; }
+.ant-table-wrapper .ant-table-thead .ant-table-filter-trigger:hover { background: #ffffff33; color: #fff; }

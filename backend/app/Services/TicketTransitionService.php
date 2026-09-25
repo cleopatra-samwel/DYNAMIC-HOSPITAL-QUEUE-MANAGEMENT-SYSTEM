@@ -7,6 +7,7 @@ use App\Models\QueueEvent;
 use App\Models\QueueTicket;
 use App\Models\User;
 use App\Models\Visit;
+use App\Support\BillingQueue;
 use App\Support\DepartmentRoles;
 use App\Support\PaymentGate;
 use App\Support\QueueJourney;
@@ -127,6 +128,12 @@ class TicketTransitionService
                 $queueTicket->service->visit->update([
                     'overall_status' => QueueJourney::stateFor($queueTicket->service->department->dept_code, $rule['to']),
                 ]);
+            }
+
+            // A cancelled / no-show service will never be paid for, so its
+            // companion Billing-queue ticket (if any) is closed with it.
+            if (in_array($rule['to'], ['CANCELLED', 'NO_SHOW'], true)) {
+                BillingQueue::cancel($queueTicket->service, $actingUser);
             }
 
             QueueEvent::create([

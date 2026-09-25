@@ -19,7 +19,7 @@ use Illuminate\Http\Request;
  */
 class QueueTicketController extends Controller
 {
-    private const TICKET_RELATIONS = ['priorityLevel', 'service.department', 'service.visit.patient', 'service.previousService.department', 'service.previousService.queueTicket'];
+    private const TICKET_RELATIONS = ['priorityLevel', 'service.department', 'service.visit.patient', 'service.previousService.department', 'service.previousService.queueTicket', 'service.billingFor.department'];
 
     public function __construct(private readonly TicketTransitionService $transitions) {}
 

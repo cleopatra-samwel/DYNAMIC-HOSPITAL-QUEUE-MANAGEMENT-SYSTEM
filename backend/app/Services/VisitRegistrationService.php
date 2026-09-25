@@ -11,6 +11,7 @@ use App\Models\QueueTicket;
 use App\Models\Service;
 use App\Models\User;
 use App\Models\Visit;
+use App\Support\BillingQueue;
 use App\Support\PaymentGate;
 use App\Support\QueueJourney;
 use App\Support\QueueNumberGenerator;
@@ -100,6 +101,8 @@ class VisitRegistrationService
             // covers ticket/service creation (only status transitions and
             // callNext do), so this is a direct call here.
             app(NotificationService::class)->notifyWaiting($queueTicket);
+
+            BillingQueue::open($service, $visit, $actingUser);
 
             return $visit;
         });

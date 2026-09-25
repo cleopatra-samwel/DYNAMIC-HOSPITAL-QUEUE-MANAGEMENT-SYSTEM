@@ -13,6 +13,7 @@ use App\Models\ServiceRequestedTest;
 use App\Models\Visit;
 use App\Rules\ActiveDoctor;
 use App\Services\NotificationService;
+use App\Support\BillingQueue;
 use App\Support\PaymentGate;
 use App\Support\QueueJourney;
 use App\Support\QueueNumberGenerator;
@@ -214,6 +215,8 @@ class ServiceFlowController extends Controller
                 'performed_by' => $request->user()->id,
                 'event_time' => now(),
             ]);
+
+            BillingQueue::open($newService, $visit, $request->user());
 
             // Doctor Role expansion — "Refer to Another Department". Created
             // in the SAME transaction as the service/ticket above, so a

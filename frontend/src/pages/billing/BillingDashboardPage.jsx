@@ -35,18 +35,23 @@ export default function BillingDashboardPage() {
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
         <OpenDisplayBoardButton deptCode="BILL" />
       </div>
-      <Row gutter={16}>
-        <Col xs={24} sm={8}>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} sm={12} md={6}>
+          <Card hoverable className="stat-card" style={{ ...cardStyle, cursor: 'pointer' }} onClick={() => navigate('/billing/queue')}>
+            <Statistic title="Waiting Queue" value={stats.waiting} valueStyle={{ color: '#b8860b' }} prefix={<ClockCircleOutlined />} />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} md={6}>
           <Card hoverable className="stat-card" style={{ ...cardStyle, cursor: 'pointer' }} onClick={() => navigate('/billing/pending-payments')}>
             <Statistic title="Pending Payments" value={stats.pending_payments} valueStyle={{ color: '#8c1d2d' }} prefix={<ClockCircleOutlined />} />
           </Card>
         </Col>
-        <Col xs={24} sm={8}>
+        <Col xs={24} sm={12} md={6}>
           <Card className="stat-card" style={cardStyle}>
             <Statistic title="Cash Collected Today" value={stats.cash_collected_today} precision={2} valueStyle={{ color: '#1a7f37' }} prefix={<CheckCircleOutlined />} />
           </Card>
         </Col>
-        <Col xs={24} sm={8}>
+        <Col xs={24} sm={12} md={6}>
           <Card className="stat-card" style={cardStyle}>
             <Statistic title="Insurance Claims Verified Today" value={stats.insurance_claims_verified_today} prefix={<SafetyCertificateOutlined />} />
           </Card>

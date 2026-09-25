@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['visit_id', 'previous_service_id', 'department_id', 'doctor_id', 'service_type', 'status', 'notes', 'requires_payment'])]
+#[Fillable(['visit_id', 'previous_service_id', 'billing_for_service_id', 'department_id', 'doctor_id', 'service_type', 'status', 'notes', 'requires_payment'])]
 class Service extends Model
 {
     use HasFactory;
@@ -50,6 +50,21 @@ class Service extends Model
     public function nextService(): HasOne
     {
         return $this->hasOne(Service::class, 'previous_service_id');
+    }
+
+    /** Only set on a Billing-queue service — the service the cashier ticket collects payment for (see BillingQueue). */
+    public function billingFor(): BelongsTo
+    {
+        return $this->belongsTo(Service::class, 'billing_for_service_id');
+    }
+
+    /**
+     * Excludes Billing-queue services, so "the visit's current/latest
+     * service" lookups keep meaning the clinical stop the patient is at.
+     */
+    public function scopeClinical($query)
+    {
+        return $query->whereNull('billing_for_service_id');
     }
 
     public function payment(): HasOne

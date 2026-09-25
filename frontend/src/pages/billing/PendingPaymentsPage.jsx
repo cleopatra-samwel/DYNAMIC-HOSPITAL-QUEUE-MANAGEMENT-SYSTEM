@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Alert, Button, Divider, Empty, Form, Input, InputNumber, Modal, Select, Space, Spin, Table, Tag, Typography, message } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -24,6 +25,8 @@ export default function PendingPaymentsPage() {
   const [otherLabel, setOtherLabel] = useState('');
   const [otherAmount, setOtherAmount] = useState(null);
   const [form] = Form.useForm();
+  const location = useLocation();
+  const autoOpenedRef = useRef(false);
 
   const load = () => {
     setLoading(true);
@@ -103,6 +106,24 @@ export default function PendingPaymentsPage() {
     setOtherAmount(null);
     setTarget(row);
   };
+
+  // Arriving from the Billing Queue's "Verify Payment" button: open the
+  // verify form for that ticket's service once its row (and, for Laboratory
+  // / Pharmacy, the catalog used to pre-select items) has loaded.
+  useEffect(() => {
+    const serviceId = location.state?.serviceId;
+    if (!serviceId || autoOpenedRef.current || loading) return;
+
+    const row = rows.find((r) => r.service_id === serviceId);
+    if (!row) return;
+
+    const catalogReady = row.dept_code === 'LAB' ? labTests.length > 0 : row.dept_code === 'PHARM' ? medications.length > 0 : true;
+    if (!catalogReady) return;
+
+    autoOpenedRef.current = true;
+    openVerify(row);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, loading, labTests, medications, location.state]);
 
   const addCatalogItem = () => {
     const catalog = catalogForRow(target);

@@ -91,7 +91,7 @@ class VisitController extends Controller
             'Only Registration Staff may update registration details.'
         );
 
-        $currentDeptCode = $visit->services()->latest('id')->first()?->department?->dept_code;
+        $currentDeptCode = $visit->services()->clinical()->latest('id')->first()?->department?->dept_code;
         abort_unless($currentDeptCode === 'REG', 422, 'This visit is no longer at Registration.');
 
         $data = $request->validate([

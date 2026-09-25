@@ -24,6 +24,7 @@ import QueuePage from '../pages/registration/QueuePage';
 import NotificationPage from '../pages/registration/NotificationPage';
 import BillingDashboardPage from '../pages/billing/BillingDashboardPage';
 import PendingPaymentsPage from '../pages/billing/PendingPaymentsPage';
+import BillingQueuePage from '../pages/billing/BillingQueuePage';
 import DoctorDashboardPage from '../pages/department/DoctorDashboardPage';
 import DoctorQueuePage from '../pages/department/DoctorQueuePage';
 import DoctorSettingsPage from '../pages/department/DoctorSettingsPage';
@@ -69,6 +70,7 @@ const REGISTRATION_MENU_ITEMS = [
 // touches cards, only payment verification.
 const BILLING_MENU_ITEMS = [
   { key: 'dashboard', label: 'Dashboard', icon: <DashboardOutlined />, path: '/billing/dashboard', breadcrumb: ['Billing', 'Dashboard'] },
+  { key: 'queue', label: 'Queue', icon: <UnorderedListOutlined />, path: '/billing/queue', breadcrumb: ['Billing', 'Queue'] },
   { key: 'pending-payments', label: 'Pending Payments', icon: <DollarOutlined />, path: '/billing/pending-payments', breadcrumb: ['Billing', 'Pending Payments'] },
   { key: 'notifications', label: 'Notification', icon: <BellOutlined />, path: '/billing/notifications', breadcrumb: ['Billing', 'Notification'] },
 ];
@@ -196,6 +198,7 @@ export default function AppRoutes() {
         <Route path="/billing" element={<Navigate to="/billing/dashboard" replace />} />
         <Route element={<DashboardLayout menuItems={BILLING_MENU_ITEMS} />}>
           <Route path="/billing/dashboard" element={<BillingDashboardPage />} />
+          <Route path="/billing/queue" element={<BillingQueuePage />} />
           <Route path="/billing/pending-payments" element={<PendingPaymentsPage />} />
           <Route path="/billing/notifications" element={<NotificationPage />} />
         </Route>

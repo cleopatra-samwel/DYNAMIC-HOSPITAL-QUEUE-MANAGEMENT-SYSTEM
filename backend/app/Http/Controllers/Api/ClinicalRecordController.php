@@ -128,7 +128,7 @@ class ClinicalRecordController extends Controller
             return;
         }
 
-        $currentService = $visit->services()->latest()->with('department')->first();
+        $currentService = $visit->services()->clinical()->latest()->with('department')->first();
 
         abort_unless(
             $currentService && DepartmentRoles::userCanActOn($user, $currentService->department->dept_code),
