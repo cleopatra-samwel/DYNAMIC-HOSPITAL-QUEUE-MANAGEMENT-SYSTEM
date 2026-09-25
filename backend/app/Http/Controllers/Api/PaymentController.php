@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\LabTestCatalog;
 use App\Models\MedicationCatalog;
 use App\Models\Payment;
+use App\Models\QueueEvent;
 use App\Models\QueueTicket;
 use App\Models\Service;
 use App\Support\BillingQueue;
@@ -153,10 +154,32 @@ class PaymentController extends Controller
                     $prescribedMedicationsOther = $origin->visit?->clinicalRecord?->prescribed_medications_other;
                 }
 
+                // The Consultation service this payment traces back to — the
+                // doctor's visit the Cashier Billing form summarises (who
+                // saw the patient, and when).
+                $consultation = match ($service->department?->dept_code) {
+                    'CONS' => $service,
+                    'LAB' => $service->labRequestOriginService(),
+                    'PHARM' => $service->pharmacyRequestOriginService(),
+                    default => null,
+                };
+                $consultationTicket = $consultation?->department?->dept_code === 'CONS' ? $consultation->queueTicket : null;
+                $doctorName = $consultationTicket
+                    ? QueueEvent::where('queue_ticket_id', $consultationTicket->id)
+                        ->where('event_type', 'CALLED')
+                        ->with('performedBy:id,name')
+                        ->latest('event_time')
+                        ->first()?->performedBy?->name
+                    : null;
+
                 return [
                     'service_id' => $service->id,
                     'visit_id' => $service->visit_id,
                     'patient_name' => $service->visit?->patient?->name,
+                    'patient_number' => $service->visit?->patient?->patient_number,
+                    'patient_contact' => $service->visit?->patient?->contact,
+                    'doctor_name' => $doctorName,
+                    'consulted_at' => $consultationTicket?->called_at ?? $consultationTicket?->created_at,
                     'department' => $service->department?->dept_name,
                     'dept_code' => $service->department?->dept_code,
                     'payment_method' => $service->visit?->payment_method,

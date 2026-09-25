@@ -84,6 +84,19 @@ class BillingQueueTest extends NotificationTestCase
         $this->assertSame('WAITING_CONS', $visit->fresh()->overall_status);
     }
 
+    public function test_pending_payments_carry_the_patient_and_doctor_details_shown_on_the_cashier_billing_form(): void
+    {
+        [, $clinical] = $this->registerVisit();
+        $this->actingAs($this->doctor)->patchJson("/api/queue-tickets/{$clinical->queueTicket->id}/call")->assertOk();
+
+        $this->actingAs($this->makeUser('Cashier/Billing Staff'))->getJson('/api/payments/pending')
+            ->assertOk()
+            ->assertJsonPath('pending.0.patient_name', 'Billing Queue Patient')
+            ->assertJsonPath('pending.0.patient_contact', '0700000300')
+            ->assertJsonPath('pending.0.doctor_name', $this->doctor->name)
+            ->assertJsonStructure(['pending' => [['patient_number', 'consulted_at', 'final_diagnosis']]]);
+    }
+
     public function test_cancelling_the_paid_for_service_cancels_its_billing_ticket(): void
     {
         [, $clinical, $billing] = $this->registerVisit();

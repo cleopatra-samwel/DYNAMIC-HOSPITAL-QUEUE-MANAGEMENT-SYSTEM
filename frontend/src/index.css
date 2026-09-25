@@ -129,3 +129,34 @@ button, input, select { font: inherit; }
 .ant-table-wrapper .ant-table-thead > tr > th::before { background-color: #ffffff55 !important; }
 .ant-table-wrapper .ant-table-thead .ant-table-column-sorter, .ant-table-wrapper .ant-table-thead .ant-table-filter-trigger { color: #ffffffcc; }
 .ant-table-wrapper .ant-table-thead .ant-table-filter-trigger:hover { background: #ffffff33; color: #fff; }
+
+/* All text is shown in Init Caps (first letter of every word capital), except the heading in the blue ribbon. Text typed into inputs is left as typed; placeholders and buttons are capitalised. */
+body { text-transform: capitalize; }
+button, input::placeholder, textarea::placeholder { text-transform: capitalize; }
+.brand-header, .brand-header * { text-transform: none; }
+
+/* Cashier Billing form (CashierBillingModal) */
+.billing-title { display: flex; align-items: center; gap: 14px; }
+.billing-title__icon { width: 40px; height: 40px; border-radius: 10px; background: #163a8a; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+.billing-title__main { font-size: 22px; font-weight: 700; color: #1b2a41; }
+.billing-title__sub { font-size: 13px; font-weight: 400; color: #5b6b82; }
+.billing-grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
+.billing-info { display: flex; gap: 20px; background: #eaf2fd; border-radius: 12px; padding: 16px; align-items: center; flex-wrap: wrap; }
+.billing-info__patient, .billing-info__diagnosis { display: flex; gap: 12px; align-items: center; flex: 1; min-width: 200px; }
+.billing-info__diagnosis { border-left: 1px solid #c5d5ee; padding-left: 20px; }
+.billing-info__icon { font-size: 26px; color: #163a8a; }
+.billing-avatar { width: 48px; height: 48px; border-radius: 50%; background: #163a8a; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 22px; flex: none; }
+.billing-label { font-size: 13px; font-weight: 600; color: #1b2a41; }
+.billing-strong { font-size: 17px; font-weight: 700; color: #1b2a41; }
+.billing-small { font-size: 12px; color: #4a5a72; }
+.billing-section { margin: 16px 0 10px; font-size: 16px; font-weight: 700; color: #1b2a41; display: flex; align-items: center; gap: 8px; }
+.billing-note { margin-top: 12px; background: #eaf2fd; border-radius: 8px; padding: 10px 14px; font-size: 13px; color: #163a8a; display: flex; align-items: center; gap: 8px; }
+.billing-summary { background: #f3f6fb; border-radius: 12px; padding: 16px; }
+.billing-summary .billing-section:first-child { margin-top: 0; }
+.billing-row { display: flex; justify-content: space-between; align-items: center; margin: 10px 0; font-size: 14px; }
+.billing-divider { border: 0; border-top: 1px solid #d9e1ee; margin: 14px 0; }
+.billing-change { display: flex; justify-content: space-between; align-items: center; background: #dff3ee; border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; font-size: 13px; }
+.billing-footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 860px) { .billing-grid { grid-template-columns: 1fr; } .billing-info__diagnosis { border-left: 0; padding-left: 0; } }
+.lab-top { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: stretch; }
+@media (max-width: 860px) { .lab-top { grid-template-columns: 1fr; } }

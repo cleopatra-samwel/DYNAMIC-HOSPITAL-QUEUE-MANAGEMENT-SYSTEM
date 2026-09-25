@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Card, Checkbox, DatePicker, Descriptions, Divider, Form, Input, InputNumber, Modal, Radio, Select, Spin, Table, Tag, Typography, message } from 'antd';
+import { useSelector } from 'react-redux';
+import { Alert, Button, Card, Checkbox, DatePicker, Descriptions, Divider, Form, Input, InputNumber, Modal, Radio, Select, Spin, Table, Tabs, Tag, Typography, message } from 'antd';
+import { ArrowLeftOutlined, CheckOutlined, EditOutlined, ExperimentOutlined, HeartOutlined, InfoCircleOutlined, MedicineBoxOutlined, ReloadOutlined, SaveOutlined, SendOutlined, UserOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import apiClient from '../services/apiClient';
 import { formatStatusLabel } from '../utils/formatLabel';
@@ -73,6 +75,9 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
   const [submitting, setSubmitting] = useState(false);
   const [quickActing, setQuickActing] = useState(false);
   const [form] = Form.useForm();
+  const currentUserName = useSelector((state) => state.auth.user?.name);
+  const liveFinalDiagnosis = Form.useWatch('final_diagnosis', form);
+  const livePreliminaryDiagnosis = Form.useWatch('doctor_preliminary_diagnosis', form);
 
   // Doctor + Registration share these (target department / doctor pick).
   const [departments, setDepartments] = useState([]);
@@ -93,6 +98,11 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
 
   // Laboratory Staff's own choice of where to send the patient next.
   const [labForwardTarget, setLabForwardTarget] = useState('CONS');
+
+  // Perform Tests layout: which test is open in the "Enter Test Results" panel, and which tab is showing.
+  const [activeTestId, setActiveTestId] = useState(null);
+  const [labTab, setLabTab] = useState('ordered');
+  const [savingResult, setSavingResult] = useState(false);
 
   // Doctor's medication prescription checklist — Doctor (editable) and
   // Pharmacy Staff (read-only), mirroring the lab test checklist above.
@@ -149,6 +159,40 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
     setTestResults((prev) => ({ ...prev, [rowId]: { ...prev[rowId], [field]: value } }));
   };
 
+  const isTestDone = (row) => !!(row.result_value || row.status);
+
+  // "Save Result" — writes just this one test's result now (same endpoint
+  // and validation the final Forward uses), so nothing is lost if the
+  // modal is closed before forwarding.
+  const saveTestResult = async () => {
+    const row = labTestRows.find((r) => r.id === activeTestId);
+    if (!row) return;
+    const draft = testResults[row.id] || {};
+    if (!draft.result_value && !draft.status) {
+      message.warning('Enter a result value or a status first.');
+      return;
+    }
+    setSavingResult(true);
+    try {
+      const { data } = await apiClient.put(`/services/${serviceId}/requested-tests/results`, {
+        results: [{ id: row.id, result_value: draft.result_value || null, reference_range: draft.reference_range || null, status: draft.status || null }],
+      });
+      setLabTestRows(data.tests);
+      setActiveTestId(null);
+      message.success(`${row.name} result saved.`);
+    } catch (err) {
+      message.error(err.response?.data?.message || 'Could not save this result.');
+    } finally {
+      setSavingResult(false);
+    }
+  };
+
+  const resetTestResult = () => {
+    const row = labTestRows.find((r) => r.id === activeTestId);
+    if (!row) return;
+    setTestResults((prev) => ({ ...prev, [row.id]: { result_value: row.result_value, reference_range: row.reference_range, status: row.status } }));
+  };
+
   // Doctor prescribes from here (CONS); Pharmacy Staff reads it back
   // read-only once the ticket reaches them (PHARM) — same
   // origin-service resolution as the lab checklist above, just for
@@ -168,6 +212,8 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
     if (!open) return;
     setDispensingNotes(ticket?.service?.notes || '');
     setLabForwardTarget('CONS');
+    setActiveTestId(null);
+    setLabTab('ordered');
     if (deptCode === 'REG' && patient) {
       form.setFieldsValue({
         name: patient.name,
@@ -200,6 +246,8 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
   // informational (drives whether the read-only "Laboratory Results" card
   // has anything to show), never used to decide what's EDITABLE.
   const hasLabResults = labTestRows.length > 0 || !!record?.lab_results_notes;
+  const pendingLabTests = labTestRows.filter((row) => !isTestDone(row));
+  const doneLabTests = labTestRows.filter(isTestDone);
 
   // Which button actually opened this form (see DepartmentQueuePage's
   // secondaryActionLabel: "Consult" on Queue/Registration Queue for a
@@ -408,7 +456,9 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
   const submitByDept = { REG: submitRegistration, CONS: submitDoctor, LAB: submitLab, PHARM: submitPharmacy };
 
   const footer = [
-    <Button key="close" onClick={onClose}>Close</Button>,
+    ['CONS', 'LAB'].includes(deptCode)
+      ? <Button key="close" icon={<ArrowLeftOutlined />} onClick={onClose}>Back to Queue</Button>
+      : <Button key="close" onClick={onClose}>Close</Button>,
   ];
   if (isWaiting) {
     footer.push(<Button key="call" type="primary" loading={quickActing} onClick={() => runQuickAction('call')}>Call</Button>);
@@ -418,7 +468,7 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
     // REG's and Doctor's forms always end in a forward action here —
     // Laboratory/Pharmacy keep "Submit & Forward" since their own referral
     // options include a genuine "complete, no further service" case.
-    footer.push(<Button key="submit" type="primary" loading={submitting} onClick={submitByDept[deptCode]}>{['REG', 'CONS'].includes(deptCode) ? 'Forward' : 'Submit & Forward'}</Button>);
+    footer.push(<Button key="submit" type="primary" icon={deptCode === 'CONS' ? <CheckOutlined /> : undefined} loading={submitting} onClick={submitByDept[deptCode]}>{['REG', 'CONS'].includes(deptCode) ? 'Forward' : 'Submit & Forward'}</Button>);
   }
 
   const summary = (
@@ -440,18 +490,67 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
     </Descriptions>
   );
 
+  const chiefComplaintBlock = deptCode !== 'REG' && (
+    <Descriptions column={1} size="small" bordered style={{ marginBottom: 16 }}>
+      <Descriptions.Item label="Chief Complaint (Registration)">
+        {record?.chief_complaint || <Text type="secondary">Not recorded</Text>}
+      </Descriptions.Item>
+    </Descriptions>
+  );
+
+  // Consultation header card (same look as Cashier Billing): who the patient
+  // is, the working diagnosis, and who is consulting when.
+  const consultInfo = (
+    <div className="billing-info">
+      <div className="billing-info__patient">
+        <span className="billing-avatar"><UserOutlined /></span>
+        <div>
+          <div className="billing-label">Patient Name</div>
+          <div className="billing-strong">{patient?.name || '—'}</div>
+          <div className="billing-small">Patient ID: {patient?.patient_number || '—'}</div>
+          <div className="billing-small">Phone: {patient?.contact || '—'}</div>
+        </div>
+      </div>
+      <div className="billing-info__diagnosis">
+        <HeartOutlined className="billing-info__icon" />
+        <div>
+          <div className="billing-label">Diagnosis</div>
+          <div className="billing-strong">{liveFinalDiagnosis || livePreliminaryDiagnosis || record?.final_diagnosis || record?.doctor_preliminary_diagnosis || 'Not recorded yet'}</div>
+          <div className="billing-small">Doctor: {currentUserName || '—'}</div>
+          <div className="billing-small">Date: {dayjs(ticket?.called_at || undefined).format('DD MMM YYYY  HH:mm')}</div>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <Modal
-      title={`${deptCode === 'REG' ? 'Register Patient' : 'View'} — ${ticket?.queue_number || ''}`}
+      title={deptCode === 'LAB' ? (
+        <div className="billing-title">
+          <span className="billing-title__icon"><ExperimentOutlined /></span>
+          <div>
+            <div className="billing-title__main">Laboratory – Perform Tests</div>
+            <div className="billing-title__sub">View patient details, perform ordered tests and enter results.</div>
+          </div>
+        </div>
+      ) : deptCode === 'CONS' ? (
+        <div className="billing-title">
+          <span className="billing-title__icon"><MedicineBoxOutlined /></span>
+          <div>
+            <div className="billing-title__main">Consultation — {ticket?.queue_number}</div>
+            <div className="billing-title__sub">Review the patient, record the consultation, then choose where the patient goes next.</div>
+          </div>
+        </div>
+      ) : `${deptCode === 'REG' ? 'Register Patient' : 'View'} — ${ticket?.queue_number || ''}`}
       open={open}
       onCancel={onClose}
       footer={footer}
-      width={680}
+      width={deptCode === 'CONS' ? 960 : deptCode === 'LAB' ? 1000 : 680}
       destroyOnHidden
     >
       {loading ? <Spin /> : error ? <Alert type="error" showIcon message={error} /> : record && (
         <>
-          {summary}
+          {deptCode !== 'CONS' && deptCode !== 'LAB' && summary}
 
           <Form form={form} layout="vertical">
             {/* Not shown for REG — it's the same chief_complaint the
@@ -459,13 +558,7 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
                 covers, so showing it twice here would be redundant.
                 Doctor/Laboratory/Pharmacy still see it as read-only
                 reference for why the patient came in. */}
-            {deptCode !== 'REG' && (
-              <Descriptions column={1} size="small" bordered style={{ marginBottom: 16 }}>
-                <Descriptions.Item label="Chief Complaint (Registration)">
-                  {record.chief_complaint || <Text type="secondary">Not recorded</Text>}
-                </Descriptions.Item>
-              </Descriptions>
-            )}
+            {deptCode !== 'CONS' && deptCode !== 'LAB' && chiefComplaintBlock}
 
             {deptCode === 'REG' && (
               isInService ? (
@@ -532,7 +625,10 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
             )}
 
             {deptCode === 'CONS' && (
-              <>
+              <div className="billing-grid">
+                <div>
+                  {consultInfo}
+                  {chiefComplaintBlock}
                 <Card title="Vital Signs" size="small" style={{ marginBottom: 16 }}>
                   {isInService && !isResultReview ? (
                     <>
@@ -682,10 +778,44 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
                 </Card>
                 )}
 
-                <Card title="Next Action" size="small" style={{ marginBottom: 16 }}>
+                <Card title="Final Review &amp; Signature" size="small">
                   {isInService ? (
                     <>
-                      <Form.Item label="Next Action" name="referral_target" rules={[{ required: true, message: 'Choose the next action for this patient' }]}>
+                      <Form.Item label="Final Diagnosis" name="final_diagnosis" extra="Required before forwarding to Pharmacy.">
+                        <TextArea rows={2} />
+                      </Form.Item>
+                      <Form.Item label="Treatment Plan" name="treatment_plan">
+                        <TextArea rows={2} />
+                      </Form.Item>
+                      <Form.Item label="Patient Signature — Name" name="patient_signature_name">
+                        <Input />
+                      </Form.Item>
+                      <Form.Item label="Patient Signature — Phone" name="patient_signature_phone" style={{ marginBottom: record.signed_at ? 10 : 0 }}>
+                        <Input />
+                      </Form.Item>
+                      {record.signed_at && <Text type="secondary">Signed at {new Date(record.signed_at).toLocaleString()}</Text>}
+                    </>
+                  ) : (
+                    <Descriptions column={1} size="small" bordered>
+                      <Descriptions.Item label="Final Diagnosis">{record.final_diagnosis || <Text type="secondary">Not recorded</Text>}</Descriptions.Item>
+                      <Descriptions.Item label="Treatment Plan">{record.treatment_plan || <Text type="secondary">Not recorded</Text>}</Descriptions.Item>
+                    </Descriptions>
+                  )}
+                </Card>
+                </div>
+                <div className="billing-summary">
+                  <h4 className="billing-section"><SendOutlined /> Patient Destination</h4>
+                  <div className="billing-row"><span>Ticket</span><strong>{ticket?.queue_number}</strong></div>
+                  <div className="billing-row"><span>Priority</span><strong>{ticket?.priority_level?.name || '—'}</strong></div>
+                  <div className="billing-row"><span>Status</span><strong>{formatStatusLabel(ticket?.status)}</strong></div>
+                  <div className="billing-row"><span>Payment Status</span><strong>{ticket?.service?.visit?.payment_status || 'Pending'}</strong></div>
+                  <div className="billing-row"><span>Lab Tests Requested</span><strong>{selectedTestIds.length + (otherText ? 1 : 0)}</strong></div>
+                  <div className="billing-row"><span>Medicines Prescribed</span><strong>{selectedMedicationIds.length + (medicationOtherText ? 1 : 0)}</strong></div>
+                  <hr className="billing-divider" />
+                <div className="consult-destination">
+                  {isInService ? (
+                    <>
+                      <Form.Item label="Where Is The Patient Going?" name="referral_target" rules={[{ required: true, message: 'Choose the next action for this patient' }]}>
                         <Select
                           options={[
                             { label: 'Send to Laboratory', value: 'laboratory' },
@@ -738,142 +868,198 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
                       )}
                     </Descriptions>
                   )}
-                </Card>
+                </div>
 
-                <Card title="Final Review &amp; Signature" size="small">
-                  {isInService ? (
-                    <>
-                      <Form.Item label="Final Diagnosis" name="final_diagnosis" extra="Required before forwarding to Pharmacy.">
-                        <TextArea rows={2} />
-                      </Form.Item>
-                      <Form.Item label="Treatment Plan" name="treatment_plan">
-                        <TextArea rows={2} />
-                      </Form.Item>
-                      <Form.Item label="Patient Signature — Name" name="patient_signature_name">
-                        <Input />
-                      </Form.Item>
-                      <Form.Item label="Patient Signature — Phone" name="patient_signature_phone" style={{ marginBottom: record.signed_at ? 10 : 0 }}>
-                        <Input />
-                      </Form.Item>
-                      {record.signed_at && <Text type="secondary">Signed at {new Date(record.signed_at).toLocaleString()}</Text>}
-                    </>
-                  ) : (
-                    <Descriptions column={1} size="small" bordered>
-                      <Descriptions.Item label="Final Diagnosis">{record.final_diagnosis || <Text type="secondary">Not recorded</Text>}</Descriptions.Item>
-                      <Descriptions.Item label="Treatment Plan">{record.treatment_plan || <Text type="secondary">Not recorded</Text>}</Descriptions.Item>
-                    </Descriptions>
-                  )}
-                </Card>
-              </>
+                </div>
+              </div>
             )}
 
             {deptCode === 'LAB' && (
               <>
-                <Descriptions column={2} size="small" bordered style={{ marginBottom: 16 }}>
-                  <Descriptions.Item label="Age">{ageFromDob(patient?.date_of_birth) ?? '—'}</Descriptions.Item>
-                  <Descriptions.Item label="Gender">{patient?.gender || '—'}</Descriptions.Item>
-                  <Descriptions.Item label="Phone Number">{patient?.contact || '—'}</Descriptions.Item>
-                  <Descriptions.Item label="Date/Time">{ticket?.created_at ? dayjs(ticket.created_at).format('DD MMM YYYY, HH:mm') : '—'}</Descriptions.Item>
-                  {/* Both computed server-side (QueueTicketController::attachLabExtras)
-                      — Service.doctor_id is only ever an optional
-                      pre-selection, never who actually treated the patient. */}
-                  <Descriptions.Item label="Referring Doctor">{ticket?.referring_doctor || '—'}</Descriptions.Item>
-                  <Descriptions.Item label="Referring Department">{ticket?.service?.previousService?.department?.dept_name || '—'}</Descriptions.Item>
-                </Descriptions>
-
-                <Divider orientation="left" plain>Doctor's Request</Divider>
-                {selectedGroups.length === 0 && !otherText ? (
-                  <Text type="secondary">Not recorded</Text>
-                ) : (
-                  <>
-                    {selectedGroups.map((group) => (
-                      <div key={group.category} style={{ marginBottom: 12 }}>
-                        <div style={CATEGORY_HEADER_STYLE}>{group.category}</div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 4 }}>
-                          {group.items.map((item) => <Checkbox key={item.id} checked disabled>{item.name}</Checkbox>)}
-                        </div>
+                <div className="lab-top">
+                  <div className="billing-info">
+                    <div className="billing-info__patient">
+                      <span className="billing-avatar"><UserOutlined /></span>
+                      <div>
+                        <div className="billing-label">Patient Name</div>
+                        <div className="billing-strong">{patient?.name || '—'}</div>
+                        <div className="billing-small">Patient ID: {patient?.patient_number || '—'}</div>
+                        <div className="billing-small">Age: {ageFromDob(patient?.date_of_birth) ?? '—'} &nbsp;|&nbsp; Gender: {patient?.gender || '—'}</div>
                       </div>
-                    ))}
-                    {otherText && (
-                      <Descriptions column={1} size="small" bordered style={{ marginBottom: 16 }}>
-                        <Descriptions.Item label="Others">{otherText}</Descriptions.Item>
+                    </div>
+                    <div className="billing-info__diagnosis">
+                      <div>
+                        <div className="billing-small"><strong>Queue No:</strong> {ticket?.queue_number}</div>
+                        {/* Referring doctor is computed server-side
+                            (QueueTicketController::attachLabExtras) —
+                            Service.doctor_id is only ever an optional
+                            pre-selection, never who actually treated the patient. */}
+                        <div className="billing-small"><strong>Department:</strong> {ticket?.service?.previousService?.department?.dept_name || '—'}</div>
+                        <div className="billing-small"><strong>Doctor:</strong> {ticket?.referring_doctor || '—'}</div>
+                        <div className="billing-small"><strong>Visit Date:</strong> {dayjs(ticket?.service?.visit?.visit_date || ticket?.created_at).format('DD MMM YYYY')}</div>
+                        <Tag color={pendingLabTests.length === 0 && labTestRows.length > 0 ? 'green' : 'blue'} style={{ marginTop: 6 }}>
+                          {pendingLabTests.length === 0 && labTestRows.length > 0 ? 'Results Recorded' : 'Tests Assigned'}
+                        </Tag>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="billing-summary" style={{ marginTop: 0 }}>
+                    <h4 className="billing-section"><MedicineBoxOutlined /> Consultation Summary</h4>
+                    <div className="billing-row" style={{ alignItems: 'flex-start' }}><span>Diagnosis</span><strong style={{ textAlign: 'right' }}>{record.final_diagnosis || record.doctor_preliminary_diagnosis || '—'}</strong></div>
+                    <div className="billing-row" style={{ alignItems: 'flex-start' }}><span>Treatment Plan</span><strong style={{ textAlign: 'right' }}>{record.treatment_plan || '—'}</strong></div>
+                    <div className="billing-row" style={{ alignItems: 'flex-start' }}><span>Notes</span><strong style={{ textAlign: 'right' }}>{record.doctor_symptoms_notes || '—'}</strong></div>
+                  </div>
+                </div>
+
+                <div className="billing-grid" style={{ marginTop: 16 }}>
+                  <div>
+                    <Tabs
+                      activeKey={labTab}
+                      onChange={setLabTab}
+                      items={[
+                        {
+                          key: 'ordered',
+                          label: `Ordered Tests (${pendingLabTests.length})`,
+                          children: (
+                            <>
+                              <h4 className="billing-section" style={{ marginTop: 4 }}>Tests Ordered by Doctor</h4>
+                              <Text type="secondary" style={{ display: 'block', marginBottom: 10 }}>Perform the tests below and enter the results.</Text>
+                              <Table
+                                rowKey="id"
+                                size="small"
+                                pagination={false}
+                                dataSource={pendingLabTests}
+                                locale={{ emptyText: labTestRows.length > 0 ? 'All ordered tests have results.' : 'No specific tests were requested.' }}
+                                columns={[
+                                  { title: '#', width: 48, render: (_, __, index) => index + 1 },
+                                  { title: 'Test Name', render: (_, row) => <div><strong>{row.name}</strong><div className="billing-small">{row.category}</div></div> },
+                                  { title: 'Priority', render: () => <Tag color={ticket?.priority_level?.name === 'Critical' ? 'red' : 'blue'}>{ticket?.priority_level?.name || 'Normal'}</Tag> },
+                                  { title: 'Status', render: () => <Tag color="gold">Pending</Tag> },
+                                  ...(isInService ? [{ title: 'Action', render: (_, row) => <Button size="small" type="primary" icon={<EditOutlined />} onClick={() => setActiveTestId(row.id)}>Enter Result</Button> }] : []),
+                                ]}
+                              />
+                              {otherText && <Alert style={{ marginTop: 10 }} type="info" showIcon message={`Other tests requested: ${otherText}`} />}
+                            </>
+                          ),
+                        },
+                        {
+                          key: 'completed',
+                          label: `Completed Tests (${doneLabTests.length})`,
+                          children: (
+                            <Table
+                              rowKey="id"
+                              size="small"
+                              pagination={false}
+                              dataSource={doneLabTests}
+                              locale={{ emptyText: 'No results entered yet.' }}
+                              columns={[
+                                ...LAB_RESULT_COLUMNS,
+                                ...(isInService ? [{ title: 'Action', render: (_, row) => <Button size="small" icon={<EditOutlined />} onClick={() => setActiveTestId(row.id)}>Edit</Button> }] : []),
+                              ]}
+                            />
+                          ),
+                        },
+                        {
+                          key: 'history',
+                          label: 'Patient History',
+                          children: (
+                            <Descriptions column={1} size="small" bordered>
+                              <Descriptions.Item label="Chief Complaint (Registration)">{record.chief_complaint || <Text type="secondary">Not recorded</Text>}</Descriptions.Item>
+                              <Descriptions.Item label="Reason for Laboratory Investigation">{record.doctor_symptoms_notes || <Text type="secondary">Not recorded</Text>}</Descriptions.Item>
+                              <Descriptions.Item label="Doctor's Notes">{record.doctor_preliminary_diagnosis || <Text type="secondary">Not recorded</Text>}</Descriptions.Item>
+                              <Descriptions.Item label="Vital Signs">
+                                {(record.temperature || record.blood_pressure || record.weight || record.pulse_rate)
+                                  ? [record.temperature && `Temp ${record.temperature} °C`, record.blood_pressure && `BP ${record.blood_pressure}`, record.weight && `Weight ${record.weight} kg`, record.pulse_rate && `Pulse ${record.pulse_rate} bpm`].filter(Boolean).join(' · ')
+                                  : <Text type="secondary">Not recorded</Text>}
+                              </Descriptions.Item>
+                            </Descriptions>
+                          ),
+                        },
+                      ]}
+                    />
+                    <div className="billing-note" style={{ alignItems: 'flex-start' }}>
+                      <InfoCircleOutlined style={{ marginTop: 3 }} />
+                      <div>
+                        <strong>Important</strong>
+                        <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                          <li>Enter accurate results based on the laboratory findings.</li>
+                          <li>If a test was not performed, leave its status empty and explain why in the remarks.</li>
+                          <li>Results will be visible to the doctor once you forward the form.</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="billing-summary">
+                    <h4 className="billing-section"><ExperimentOutlined /> Enter Test Results</h4>
+                    {isInService ? (
+                      <>
+                        {labTestRows.length > 0 ? (
+                          <>
+                            <div className="billing-label" style={{ marginBottom: 4 }}>Select Test</div>
+                            <Select
+                              style={{ width: '100%', marginBottom: 12 }}
+                              placeholder="Choose a test"
+                              value={activeTestId ?? undefined}
+                              onChange={setActiveTestId}
+                              options={labTestRows.map((row) => ({ label: `${row.name}${isTestDone(row) ? ' ✓' : ''}`, value: row.id }))}
+                            />
+                            {activeTestId ? (
+                              <>
+                                <div className="billing-label" style={{ marginBottom: 4 }}>Result</div>
+                                <Input
+                                  style={{ marginBottom: 8 }}
+                                  placeholder="Result value"
+                                  value={testResults[activeTestId]?.result_value || ''}
+                                  onChange={(e) => updateTestResult(activeTestId, 'result_value', e.target.value)}
+                                />
+                                <Input
+                                  style={{ marginBottom: 8 }}
+                                  placeholder="Reference range"
+                                  value={testResults[activeTestId]?.reference_range || ''}
+                                  onChange={(e) => updateTestResult(activeTestId, 'reference_range', e.target.value)}
+                                />
+                                <Select
+                                  style={{ width: '100%', marginBottom: 12 }}
+                                  placeholder="Status"
+                                  allowClear
+                                  value={testResults[activeTestId]?.status || undefined}
+                                  onChange={(value) => updateTestResult(activeTestId, 'status', value)}
+                                  options={[{ label: 'Normal', value: 'Normal' }, { label: 'Abnormal', value: 'Abnormal' }, { label: 'Critical', value: 'Critical' }]}
+                                />
+                                <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                                  <Button type="primary" block icon={<SaveOutlined />} loading={savingResult} onClick={saveTestResult}>Save Result</Button>
+                                  <Button block icon={<ReloadOutlined />} onClick={resetTestResult}>Reset</Button>
+                                </div>
+                              </>
+                            ) : (
+                              <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>Pick a test above (or press Enter Result on the left) to record its result.</Text>
+                            )}
+                          </>
+                        ) : (
+                          <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+                            No specific tests were requested — record an overall summary below.
+                          </Text>
+                        )}
+                        <hr className="billing-divider" />
+                        <Form.Item label="Remarks / Interpretation" name="lab_results_notes">
+                          <TextArea rows={3} placeholder="Any narrative context not captured per-test above" />
+                        </Form.Item>
+                        <Form.Item label="Forward To" style={{ marginBottom: 0 }}>
+                          <Radio.Group value={labForwardTarget} onChange={(e) => setLabForwardTarget(e.target.value)}>
+                            <Radio.Button value="CONS">Doctor</Radio.Button>
+                            <Radio.Button value="PHARM">Pharmacy</Radio.Button>
+                          </Radio.Group>
+                        </Form.Item>
+                      </>
+                    ) : (
+                      <Descriptions column={1} size="small" bordered>
+                        <Descriptions.Item label="Remarks / Interpretation">{record.lab_results_notes || <Text type="secondary">Not recorded</Text>}</Descriptions.Item>
                       </Descriptions>
                     )}
-                  </>
-                )}
-
-                {/* Why this patient was sent — Doctor's own clinical
-                    reasoning, not shown to Lab anywhere else. */}
-                {(record.doctor_symptoms_notes || record.doctor_preliminary_diagnosis) && (
-                  <Descriptions column={1} size="small" bordered style={{ marginBottom: 16 }}>
-                    <Descriptions.Item label="Reason for Laboratory Investigation">{record.doctor_symptoms_notes || <Text type="secondary">Not recorded</Text>}</Descriptions.Item>
-                    <Descriptions.Item label="Doctor's Notes">{record.doctor_preliminary_diagnosis || <Text type="secondary">Not recorded</Text>}</Descriptions.Item>
-                  </Descriptions>
-                )}
-
-                <Divider orientation="left" plain>Results</Divider>
-                {isInService ? (
-                  <>
-                    {labTestRows.length > 0 ? (
-                      <div style={{ marginBottom: 16 }}>
-                        {labTestRows.map((row) => (
-                          <div key={row.id} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
-                            <div style={{ minWidth: 160 }}>{row.name}</div>
-                            <Input
-                              style={{ width: 160 }}
-                              placeholder="Result"
-                              value={testResults[row.id]?.result_value || ''}
-                              onChange={(e) => updateTestResult(row.id, 'result_value', e.target.value)}
-                            />
-                            <Input
-                              style={{ width: 140 }}
-                              placeholder="Reference range"
-                              value={testResults[row.id]?.reference_range || ''}
-                              onChange={(e) => updateTestResult(row.id, 'reference_range', e.target.value)}
-                            />
-                            <Select
-                              style={{ width: 130 }}
-                              placeholder="Status"
-                              allowClear
-                              value={testResults[row.id]?.status || undefined}
-                              onChange={(value) => updateTestResult(row.id, 'status', value)}
-                              options={[{ label: 'Normal', value: 'Normal' }, { label: 'Abnormal', value: 'Abnormal' }, { label: 'Critical', value: 'Critical' }]}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-                        No specific tests were requested — record an overall summary below.
-                      </Text>
-                    )}
-                    <Form.Item label="Overall Summary (optional)" name="lab_results_notes">
-                      <TextArea rows={3} placeholder="Any narrative context not captured per-test above" />
-                    </Form.Item>
-                    <Form.Item label="Forward To">
-                      <Radio.Group value={labForwardTarget} onChange={(e) => setLabForwardTarget(e.target.value)}>
-                        <Radio.Button value="CONS">Doctor</Radio.Button>
-                        <Radio.Button value="PHARM">Pharmacy</Radio.Button>
-                      </Radio.Group>
-                    </Form.Item>
-                  </>
-                ) : (
-                  <>
-                    {labTestRows.length > 0 && (
-                      <Table
-                        size="small"
-                        pagination={false}
-                        rowKey="id"
-                        columns={LAB_RESULT_COLUMNS}
-                        dataSource={labTestRows}
-                        style={{ marginBottom: 16 }}
-                      />
-                    )}
-                    <Descriptions column={1} size="small" bordered>
-                      <Descriptions.Item label="Overall Summary">{record.lab_results_notes || <Text type="secondary">Not recorded</Text>}</Descriptions.Item>
-                    </Descriptions>
-                  </>
-                )}
+                  </div>
+                </div>
               </>
             )}
 
