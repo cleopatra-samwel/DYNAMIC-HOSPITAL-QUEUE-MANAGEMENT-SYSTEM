@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Broadcasting\ResilientBroadcaster;
+use Illuminate\Broadcasting\BroadcastManager;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -19,6 +21,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Same Reverb driver as the framework's, except a WebSocket server that
+        // is down no longer makes ticket actions (Call, etc.) hang and fail —
+        // see ResilientBroadcaster.
+        $this->app->make(BroadcastManager::class)->extend('reverb', function ($app, array $config) {
+            return new ResilientBroadcaster($this->pusher($config), $config['jsonp'] ?? false);
+        });
+
         // Phase 8's app/Listeners/* classes (NotifyOnTicketCalled,
         // NotifyOnTicketStatusChanged, NotifyApproachingOnPriorityRecalculated)
         // need no registration here — Application::configure() in

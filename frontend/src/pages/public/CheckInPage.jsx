@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button, DatePicker, Form, Input, Result, Select } from 'antd';
 import axios from 'axios';
 import BrandHeader from '../../components/BrandHeader';
@@ -19,6 +20,7 @@ export default function CheckInPage() {
   const [submitting, setSubmitting] = useState(false);
   const [queueNumber, setQueueNumber] = useState(null);
   const [error, setError] = useState('');
+  const navigate = useNavigate();
 
   const onFinish = async (values) => {
     setSubmitting(true);
@@ -31,6 +33,10 @@ export default function CheckInPage() {
         contact: values.contact,
       });
       setQueueNumber(data.queue_number);
+      // Straight to the patient's own tracking page (rotating photos, Home / Status), where they follow their queue.
+      if (data.tracking_token) {
+        navigate(`/track/${data.tracking_token}`, { replace: true });
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Could not submit check-in. Please see a member of staff.');
     } finally {

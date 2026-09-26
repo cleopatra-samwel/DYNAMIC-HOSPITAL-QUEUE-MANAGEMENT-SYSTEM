@@ -43,6 +43,10 @@ return [
             ],
             'client_options' => [
                 // Guzzle client options: https://docs.guzzlephp.org/en/stable/request-options.html
+                // Reverb runs on this same machine/LAN, so a slow answer means it is down — fail fast
+                // instead of Guzzle's 10s connect / 30s total defaults (which made "Call" hang).
+                'connect_timeout' => 1,
+                'timeout' => 3,
             ],
         ],
 
