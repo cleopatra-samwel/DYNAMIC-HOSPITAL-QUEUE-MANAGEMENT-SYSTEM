@@ -1,4 +1,4 @@
-import DepartmentQueuePage from './DepartmentQueuePage';
+himport DepartmentQueuePage from './DepartmentQueuePage';
 import NowServingBanner from '../../components/NowServingBanner';
 
 // Reused verbatim by Registration Queue/Laboratory Queue/New Patients

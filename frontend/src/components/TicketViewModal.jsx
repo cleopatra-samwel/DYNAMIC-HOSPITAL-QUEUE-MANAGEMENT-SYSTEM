@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { Alert, Button, Card, Checkbox, DatePicker, Descriptions, Divider, Form, Input, InputNumber, Modal, Radio, Select, Space, Spin, Table, Tabs, Tag, Typography, message } from 'antd';
-import { ArrowLeftOutlined, CheckCircleOutlined, CheckOutlined, DeleteOutlined, EditOutlined, PrinterOutlined, ExperimentOutlined, HeartOutlined, InfoCircleOutlined, MedicineBoxOutlined, ReloadOutlined, SaveOutlined, SendOutlined, TeamOutlined, UserOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, DeleteOutlined, EditOutlined, PrinterOutlined, ExperimentOutlined, HeartOutlined, InfoCircleOutlined, MedicineBoxOutlined, ReloadOutlined, SaveOutlined, SendOutlined, TeamOutlined, UserOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import apiClient from '../services/apiClient';
 import { formatStatusLabel } from '../utils/formatLabel';
@@ -63,13 +63,6 @@ const RESULT_FORWARD_OPTIONS = [
   { key: 'followup', title: 'Follow-up', subtitle: 'Review on a set date', icon: <ReloadOutlined /> },
   { key: 'none', title: 'Complete Consultation', subtitle: 'No further action', icon: <CheckCircleOutlined /> },
 ];
-
-const FORWARD_BUTTON_LABELS = {
-  pharmacy: 'Forward to Pharmacy',
-  refer: 'Refer Patient',
-  followup: 'Schedule Follow-up',
-  none: 'Complete Consultation',
-};
 
 /** Draw-with-finger/mouse signature box. Reports a PNG data URL (or null once cleared) through onChange. */
 function SignaturePad({ onChange }) {
@@ -670,21 +663,21 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
 
   const submitByDept = { REG: submitRegistration, CONS: submitDoctor, LAB: submitLab, PHARM: submitPharmacy };
 
-  const footer = [
-    ['CONS', 'LAB'].includes(deptCode)
-      ? <Button key="close" icon={<ArrowLeftOutlined />} onClick={onClose}>Back to Queue</Button>
-      : <Button key="close" onClick={onClose}>Close</Button>,
-  ];
+  // Every form's footer ends in the same two actions — Close (leave without
+  // saving) and Forward (save + advance the patient, refused server-side —
+  // and client-side, see the conditional `required` rules below — until
+  // the fields that destination actually needs are filled in). Call/Start
+  // Service still appear first when the ticket isn't far enough along yet
+  // for the form to make sense.
+  const footer = [];
   if (isWaiting) {
     footer.push(<Button key="call" type="primary" loading={quickActing} onClick={() => runQuickAction('call')}>Call</Button>);
   } else if (isCalled) {
     footer.push(<Button key="start" type="primary" loading={quickActing} onClick={() => runQuickAction('start-service')}>Start Service</Button>);
   } else if (isInService) {
-    // REG's and Doctor's forms always end in a forward action here —
-    // Laboratory/Pharmacy keep "Submit & Forward" since their own referral
-    // options include a genuine "complete, no further service" case.
-    footer.push(<Button key="submit" type="primary" icon={deptCode === 'CONS' ? <CheckOutlined /> : undefined} loading={submitting} onClick={submitByDept[deptCode]}>{['REG', 'CONS'].includes(deptCode) ? 'Forward' : 'Submit & Forward'}</Button>);
+    footer.push(<Button key="submit" type="primary" icon={<SendOutlined />} loading={submitting} onClick={submitByDept[deptCode]}>Forward</Button>);
   }
+  footer.push(<Button key="close" onClick={onClose}>Close</Button>);
 
   const summary = (
     <Descriptions column={2} size="small" bordered style={{ marginBottom: 16 }}>
@@ -1014,16 +1007,16 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
                 <Card title="Final Review &amp; Signature" size="small">
                   {isInService ? (
                     <>
-                      <Form.Item label="Final Diagnosis" name="final_diagnosis" extra="Required before forwarding to Pharmacy.">
+                      <Form.Item label="Final Diagnosis" name="final_diagnosis" extra="Required before forwarding to Pharmacy." rules={[{ required: forwardChoice === 'pharmacy', message: 'Final diagnosis is required before forwarding to Pharmacy.' }]}>
                         <TextArea rows={2} />
                       </Form.Item>
-                      <Form.Item label="Treatment Plan" name="treatment_plan">
+                      <Form.Item label="Treatment Plan" name="treatment_plan" rules={[{ required: forwardChoice === 'pharmacy', message: 'Treatment plan is required before forwarding to Pharmacy.' }]}>
                         <TextArea rows={2} />
                       </Form.Item>
-                      <Form.Item label="Patient Signature — Name" name="patient_signature_name">
+                      <Form.Item label="Patient Signature — Name" name="patient_signature_name" rules={[{ required: forwardChoice === 'pharmacy', message: 'Patient signature (name) is required before forwarding to Pharmacy.' }]}>
                         <Input />
                       </Form.Item>
-                      <Form.Item label="Patient Signature — Phone" name="patient_signature_phone" style={{ marginBottom: record.signed_at ? 10 : 0 }}>
+                      <Form.Item label="Patient Signature — Phone" name="patient_signature_phone" style={{ marginBottom: record.signed_at ? 10 : 0 }} rules={[{ required: forwardChoice === 'pharmacy', message: 'Patient signature (phone) is required before forwarding to Pharmacy.' }]}>
                         <Input />
                       </Form.Item>
                       {record.signed_at && <Text type="secondary">Signed at {new Date(record.signed_at).toLocaleString()}</Text>}
@@ -1168,7 +1161,7 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
                         {record.doctor_symptoms_notes && <div className="billing-small">{record.doctor_symptoms_notes}</div>}
                       </div>
                     </div>
-                    <Form.Item label="Final Diagnosis" name="final_diagnosis" extra="Required before forwarding to Pharmacy." style={{ marginBottom: 0 }}>
+                    <Form.Item label="Final Diagnosis" name="final_diagnosis" extra="Required before forwarding to Pharmacy." style={{ marginBottom: 0 }} rules={[{ required: forwardChoice === 'pharmacy', message: 'Final diagnosis is required before forwarding to Pharmacy.' }]}>
                       <TextArea rows={2} />
                     </Form.Item>
                   </Card>
@@ -1217,13 +1210,13 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
                   </Card>
 
                   <Card size="small" title="Doctor's Recommendation" style={{ marginBottom: 16 }}>
-                    <Form.Item name="treatment_plan" extra="Required before forwarding to Pharmacy." style={{ marginBottom: 12 }}>
+                    <Form.Item name="treatment_plan" extra="Required before forwarding to Pharmacy." style={{ marginBottom: 12 }} rules={[{ required: forwardChoice === 'pharmacy', message: 'Treatment plan is required before forwarding to Pharmacy.' }]}>
                       <TextArea rows={2} maxLength={500} showCount placeholder="e.g. Patient is stable. Continue treatment and review if symptoms persist." />
                     </Form.Item>
-                    <Form.Item label="Patient Signature — Name" name="patient_signature_name" style={{ marginBottom: 8 }}>
+                    <Form.Item label="Patient Signature — Name" name="patient_signature_name" style={{ marginBottom: 8 }} rules={[{ required: forwardChoice === 'pharmacy', message: 'Patient signature (name) is required before forwarding to Pharmacy.' }]}>
                       <Input />
                     </Form.Item>
-                    <Form.Item label="Patient Signature — Phone" name="patient_signature_phone" style={{ marginBottom: record.signed_at ? 8 : 0 }}>
+                    <Form.Item label="Patient Signature — Phone" name="patient_signature_phone" style={{ marginBottom: record.signed_at ? 8 : 0 }} rules={[{ required: forwardChoice === 'pharmacy', message: 'Patient signature (phone) is required before forwarding to Pharmacy.' }]}>
                       <Input />
                     </Form.Item>
                     {record.signed_at && <Text type="secondary">Signed at {new Date(record.signed_at).toLocaleString()}</Text>}
@@ -1258,8 +1251,8 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
                     )}
                     <div className="result-actions">
                       <Button icon={<SaveOutlined />} loading={submitting} onClick={saveDraft}>Save Draft</Button>
-                      <Button type="primary" icon={<SendOutlined />} loading={submitting} onClick={submitDoctor}>{FORWARD_BUTTON_LABELS[forwardChoice] || 'Forward'}</Button>
-                      <Button onClick={onClose}>Cancel</Button>
+                      <Button type="primary" icon={<SendOutlined />} loading={submitting} onClick={submitDoctor}>Forward</Button>
+                      <Button onClick={onClose}>Close</Button>
                     </div>
                   </Card>
                 </div>
@@ -1421,7 +1414,7 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
                                   options={[{ label: 'Normal', value: 'Normal' }, { label: 'Abnormal', value: 'Abnormal' }, { label: 'Critical', value: 'Critical' }]}
                                 />
                                 <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-                                  <Button type="primary" block icon={<SaveOutlined />} loading={savingResult} onClick={saveTestResult}>Save Result</Button>
+                                  <Button type="primary" block icon={<SaveOutlined />} loading={savingResult} onClick={saveTestResult}>Save</Button>
                                   <Button block icon={<ReloadOutlined />} onClick={resetTestResult}>Reset</Button>
                                 </div>
                               </>
@@ -1563,13 +1556,11 @@ export default function TicketViewModal({ ticket, open, onClose, onChanged, onTi
                   </div>
                 </div>
 
-                <div className="result-actions" style={{ justifyContent: 'space-between', marginTop: 16 }}>
-                  <Button icon={<ArrowLeftOutlined />} onClick={onClose}>Back to Queue</Button>
-                  <div className="result-actions" style={{ marginTop: 0 }}>
-                    <Button icon={<SaveOutlined />} loading={submitting} onClick={savePharmacyDraft}>Save Draft</Button>
-                    <Button icon={<PrinterOutlined />} onClick={printDispensedLabels}>Dispense &amp; Print Label</Button>
-                    <Button type="primary" icon={<CheckOutlined />} loading={submitting} onClick={submitPharmacy}>Complete Dispensing</Button>
-                  </div>
+                <div className="result-actions" style={{ marginTop: 16 }}>
+                  <Button icon={<SaveOutlined />} loading={submitting} onClick={savePharmacyDraft}>Save Draft</Button>
+                  <Button icon={<PrinterOutlined />} onClick={printDispensedLabels}>Dispense &amp; Print Label</Button>
+                  <Button type="primary" icon={<SendOutlined />} loading={submitting} onClick={submitPharmacy}>Forward</Button>
+                  <Button onClick={onClose}>Close</Button>
                 </div>
               </>
             )}
